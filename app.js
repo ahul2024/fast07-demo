@@ -23,29 +23,39 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&
 function allUsers(){return safeJSON(USERS,[])}
 function saveUsers(a){localStorage.setItem(USERS,JSON.stringify(a))}
 function updateUser(patch){const u=user();if(!u)return;let a=allUsers(),i=a.findIndex(x=>x.id===u.id);if(i<0)return; a[i]={...a[i],...patch};saveUsers(a);localStorage.setItem(U,JSON.stringify(a[i]));}
-function setCoins(x){x=Math.max(0,Math.round((Number(x)||0)*100)/100);localStorage.setItem(key(C),String(x));updateUser({coins:x,lastSeen:Date.now()});refresh()}
+function setCoins(x){x=Math.max(0,Math.floor(Number(x)||0));localStorage.setItem(key(C),String(x));updateUser({coins:x,lastSeen:Date.now()});refresh()}
 function addActivity(action,details='',amount=0){const u=user();if(!u)return;let a=safeJSON(ACT,[]);a.unshift({id:'A'+Date.now()+Math.random().toString(36).slice(2,5),userId:u.id,userName:u.name,action,details,amount,coins:coins(),time:now()});localStorage.setItem(ACT,JSON.stringify(a.slice(0,1000)));updateUser({lastSeen:Date.now()})}
 
-function signup(){
+async function signup(){
   const name=el('sName').value.trim(),mobile=el('sMobile').value.trim(),email=el('sEmail').value.trim().toLowerCase(),pass=el('sPass').value,refCode=el('sRef').value.trim().toUpperCase();
   if(!name||!mobile||!email||!pass)return el('msg').textContent='Please fill all fields.';
-  let users=allUsers();
-  if(users.some(x=>x.email===email||x.mobile===mobile))return el('msg').textContent='Email or mobile is already registered.';
-  const id='U'+Date.now().toString().slice(-8);
-  const myRef='REF-'+mobile.replace(/\D/g,'').slice(-6);
-  const referrer=users.find(x=>x.refCode===refCode);
-  const welcome=referrer?1200:1000; // 1000 base + 200 referral welcome bonus
-  const u={id,name,mobile,email,pass,refCode:myRef,referredBy:referrer?referrer.id:'',joined:now(),status:'ACTIVE',coins:welcome,referralEarned:0,lastSeen:Date.now()};
-  users.push(u);saveUsers(users);localStorage.setItem(U,JSON.stringify(u));localStorage.setItem(key(C),String(welcome));
-  localStorage.setItem(key(H),'[]');localStorage.setItem(key(T),'[]');
-  if(referrer){const ri=users.findIndex(x=>x.id===referrer.id);users[ri].coins=Number(users[ri].coins||0)+100;users[ri].referralEarned=Number(users[ri].referralEarned||0)+100;saveUsers(users);localStorage.setItem(C+':'+referrer.id,String(users[ri].coins));let rr=safeJSON(REF,[]);rr.unshift({referrerId:referrer.id,referrerName:referrer.name,newUserId:id,newUserName:name,bonus:100,time:now()});localStorage.setItem(REF,JSON.stringify(rr));}
-  addActivity('REGISTER','New demo account created',welcome);location.href='app.html';
+  el('msg').textContent='Creating account...';
+  try{
+    const r=await fetch('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,mobile,email,password:pass,referralCode:refCode})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Signup failed');
+    const u={...d.user,refCode:d.user.referral_code||d.user.refCode,joined:d.user.created_at||now(),lastSeen:Date.now()};
+    localStorage.setItem('authToken',d.token);localStorage.setItem(U,JSON.stringify(u));localStorage.setItem(key(C),String(u.coins||1000));
+    localStorage.setItem(key(H),'[]');localStorage.setItem(key(T),'[]');
+    location.href='app.html';
+  }catch(e){el('msg').textContent=e.message||'Signup failed';}
 }
-function login(){
-  const id=el('lId').value.trim().toLowerCase(),pass=el('lPass').value;const u=allUsers().find(x=>(x.email===id||x.mobile===id)&&x.pass===pass);
-  if(!u)return el('msg').textContent='Invalid login details.';
-  if(u.status==='BLOCKED')return el('msg').textContent='This demo account is blocked by Admin.';
-  localStorage.setItem(U,JSON.stringify(u));localStorage.setItem(key(C),String(u.coins||1000));updateUser({lastSeen:Date.now()});addActivity('LOGIN','User logged in');location.href='app.html';
+async function login(){
+  const id=el('lId').value.trim(),pass=el('lPass').value;
+  if(!id||!pass)return el('msg').textContent='Enter login details.';
+  el('msg').textContent='Logging in...';
+  try{
+    const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier:id,password:pass})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Login failed');
+    const u={...d.user,refCode:d.user.referralCode||d.user.refCode,lastSeen:Date.now()};
+    localStorage.setItem('authToken',d.token);localStorage.setItem(U,JSON.stringify(u));localStorage.setItem(key(C),String(u.coins||1000));
+    location.href='app.html';
+  }catch(e){el('msg').textContent=e.message||'Login failed';}
+}
+async function syncServerUser(){
+  const t=localStorage.getItem('authToken'); if(!t)return null;
+  try{const r=await fetch('/api/me',{headers:{Authorization:'Bearer '+t}});if(!r.ok)return null;const d=await r.json();const u={...d.user,refCode:d.user.referral_code||d.user.refCode};localStorage.setItem(U,JSON.stringify(u));localStorage.setItem(key(C),String(u.coins||0));return u}catch(e){return null}
 }
 function showLogin(){el('signup').classList.add('hidden');el('login').classList.remove('hidden')}
 function showSignup(){el('login').classList.add('hidden');el('signup').classList.remove('hidden')}
@@ -71,7 +81,7 @@ function getRoundResult(period){let all=getRoundResults();if(all[period])return 
 function startAdvanced(){clearInterval(iv);currentPeriod=getPeriod();t=30;locked=false;selectedNumber=null;selectedColour='';selectedSize='';if(el('timer'))el('timer').textContent='00:30';if(el('period'))el('period').textContent=currentPeriod;document.querySelectorAll('.selected').forEach(x=>x.classList.remove('selected'));recordLiveRound(currentPeriod);iv=setInterval(()=>{t--;if(el('timer'))el('timer').textContent='00:'+(t<10?'0':'')+t;if(t<=8&&t>0)countdownBeep(t);if(t<=0){clearInterval(iv);finishRound(currentPeriod)}},1000)}
 function recordLiveRound(period){let h=safeJSON(key(H),[]);if(!h.some(x=>x.period===period)){h.unshift({period,status:'LIVE',number:'--',colour:'--',size:'--',bet:0,betChoice:'No Bet',win:false,time:now()});localStorage.setItem(key(H),JSON.stringify(h));}renderAdvancedHistory()}
 function placeAdvanced(){if(locked)return;if(!selectedColour&&selectedNumber===null&&!selectedSize)return el('gameMsg').textContent='Choose a prediction first.';if(coins()<bet)return el('gameMsg').textContent='Insufficient virtual coins.';setCoins(coins()-bet);locked=true;let h=safeJSON(key(H),[]),row=h.find(x=>x.period===currentPeriod);if(row){row.bet=bet;row.betChoice=selectedNumber!==null?'Number '+selectedNumber:(selectedColour||selectedSize);row.mult=mult;row.status='BET PLACED';localStorage.setItem(key(H),JSON.stringify(h))}addActivity('BET','Period '+currentPeriod+' • '+(selectedNumber!==null?'Number '+selectedNumber:selectedColour||selectedSize)+' • '+bet+' coins',bet);el('gameMsg').textContent='Prediction locked for Period '+currentPeriod+' • Waiting for result…';renderAdvancedHistory()}
-function finishRound(period){const result=getRoundResult(period),h=safeJSON(key(H),[]),row=h.find(x=>x.period===period)||{period};const win=!!locked&&((selectedNumber!==null&&selectedNumber===result.number)||(selectedColour&&selectedColour===result.colour)||(selectedSize&&selectedSize===result.size));row.number=result.number;row.colour=result.colour;row.size=result.size;row.status=locked?(win?'WIN':'LOSS'):'NO BET';row.win=win;row.resultTime=now();if(locked&&win){const grossReward=bet*2;const demoDeduction=Math.floor(grossReward*0.008*100)/100;const reward=Math.floor((grossReward-demoDeduction)*100)/100;setCoins(coins()+reward);row.reward=reward;row.grossReward=grossReward;row.demoDeduction=demoDeduction;row.deductionLabel='Demo fee/tax simulation 0.8%';showWinPopup('🎉 '+result.number+' • '+result.colour+' • '+result.size+' • 2× demo payout',reward);addActivity('WIN','Period '+period+' • Result '+result.number+' '+result.colour+' '+result.size+' • Gross '+grossReward+' • Demo deduction 0.8% '+demoDeduction,reward)}else if(locked){row.reward=0;showLossPopup('😔 '+result.number+' • '+result.colour+' • '+result.size,bet);addActivity('LOSS','Period '+period+' • Result '+result.number+' '+result.colour+' '+result.size,-bet)}
+function finishRound(period){const result=getRoundResult(period),h=safeJSON(key(H),[]),row=h.find(x=>x.period===period)||{period};const win=!!locked&&((selectedNumber!==null&&selectedNumber===result.number)||(selectedColour&&selectedColour===result.colour)||(selectedSize&&selectedSize===result.size));row.number=result.number;row.colour=result.colour;row.size=result.size;row.status=locked?(win?'WIN':'LOSS'):'NO BET';row.win=win;row.resultTime=now();if(locked&&win){const reward=bet*2*mult;setCoins(coins()+reward);row.reward=reward;showWinPopup('🎉 '+result.number+' • '+result.colour+' • '+result.size,reward);addActivity('WIN','Period '+period+' • Result '+result.number+' '+result.colour+' '+result.size,reward)}else if(locked){row.reward=0;showLossPopup('😔 '+result.number+' • '+result.colour+' • '+result.size,bet);addActivity('LOSS','Period '+period+' • Result '+result.number+' '+result.colour+' '+result.size,-bet)}
   localStorage.setItem(key(H),JSON.stringify(h));renderAdvancedHistory();refresh();selectedNumber=null;selectedColour='';selectedSize='';if(!el('game')?.classList.contains('hidden'))setTimeout(startAdvanced,1200)}
 function renderAdvancedHistory(){let h=safeJSON(key(H),[]),e=el('history');if(!e)return;e.innerHTML=h.length?h.map(x=>`<div class="history-item"><span>#${esc(x.period||x.r)}</span><span>${esc(x.betChoice||'No Bet')}</span><span>${esc(x.size||'--')}</span><span>${esc(x.colour||'--')}</span><span>${esc(x.number??'--')}</span><span>🪙 ${esc(x.bet||0)}</span><b class="status-${String(x.status||'').toLowerCase().replace(/\s/g,'-')}">${esc(x.status||'--')}</b></div>`).join(''):'<small>No rounds yet.</small>';if(el('recent'))el('recent').innerHTML=h.slice(0,8).map(x=>`<div class="history-item"><span>#${esc(x.period||'--')}</span><span>${esc(x.number??'--')}</span><span>${esc(x.colour||'--')}</span><b>${esc(x.status||'LIVE')}</b></div>`).join('')||'<small>No rounds yet.</small>'}
 

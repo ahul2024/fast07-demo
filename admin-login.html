@@ -11,7 +11,5 @@ body{min-height:100vh;display:grid;place-items:center}.admin-card{width:min(420p
 <button onclick="login()">LOGIN</button><div id="msg" class="back"></div>
 <div class="back"><a href="index.html">← Back to Website</a></div></div>
 <script>
-function login(){const id=document.getElementById('aid').value.trim(),p=document.getElementById('apass').value;
-if(id==='admin'&&p==='Admin@12345'){sessionStorage.setItem('adminLogged','1');location.href='admin.html'}
-else document.getElementById('msg').textContent='Invalid admin credentials';}
+async function login(){const id=document.getElementById('aid').value.trim(),p=document.getElementById('apass').value,msg=document.getElementById('msg');msg.textContent='Logging in...';try{const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,password:p})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Invalid admin credentials');localStorage.setItem('adminToken',d.token);sessionStorage.setItem('adminLogged','1');location.href='admin.html'}catch(e){msg.textContent=e.message}}
 </script></body></html>
