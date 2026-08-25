@@ -22,8 +22,13 @@ async function initDatabase() {
 
     console.log('Database schema initialized successfully.');
   } catch (error) {
-    console.error('Database initialization failed:', error.message);
-    process.exit(1);
+  console.error('DATABASE INITIALIZATION ERROR:', error);
+  console.error('MESSAGE:', error.message);
+  console.error('CODE:', error.code);
+  console.error('DETAIL:', error.detail);
+  console.error('HINT:', error.hint);
+  process.exit(1);
+}
   }
 }
 function token(u){return jwt.sign({id:u.id,role:u.role||'USER'},process.env.JWT_SECRET,{expiresIn:'7d'})}
