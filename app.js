@@ -27,31 +27,116 @@ function setCoins(x){x=Math.max(0,Math.floor(Number(x)||0));localStorage.setItem
 function addActivity(action,details='',amount=0){const u=user();if(!u)return;let a=safeJSON(ACT,[]);a.unshift({id:'A'+Date.now()+Math.random().toString(36).slice(2,5),userId:u.id,userName:u.name,action,details,amount,coins:coins(),time:now()});localStorage.setItem(ACT,JSON.stringify(a.slice(0,1000)));updateUser({lastSeen:Date.now()})}
 
 async function signup(){
-  const name=el('sName').value.trim(),mobile=el('sMobile').value.trim(),email=el('sEmail').value.trim().toLowerCase(),pass=el('sPass').value,refCode=el('sRef').value.trim().toUpperCase();
-  if(!name||!mobile||!email||!pass)return el('msg').textContent='Please fill all fields.';
-  el('msg').textContent='Creating account...';
-  try{
-    const r=await fetch('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,mobile,email,password:pass,referralCode:refCode})});
-    const d=await r.json();
-    if(!r.ok)throw new Error(d.error||'Signup failed');
-    const u={...d.user,refCode:d.user.referral_code||d.user.refCode,joined:d.user.created_at||now(),lastSeen:Date.now()};
-    localStorage.setItem('authToken',d.token);localStorage.setItem(U,JSON.stringify(u));localStorage.setItem(key(C),String(u.coins||1000));
-    localStorage.setItem(key(H),'[]');localStorage.setItem(key(T),'[]');
-    location.href='app.html';
-  }catch(e){el('msg').textContent=e.message||'Signup failed';}
+  const name = el('sName').value.trim();
+  const mobile = el('sMobile').value.trim();
+  const email = el('sEmail').value.trim().toLowerCase();
+  const password = el('sPass').value;
+  const referralCode = el('sRef').value.trim().toUpperCase();
+
+  if(!name || !mobile || !email || !password){
+    el('msg').textContent = 'Please fill all fields.';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/auth/signup', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name,
+        mobile,
+        email,
+        password,
+        referralCode
+      })
+    });
+
+    const data = await res.json();
+
+    if(!res.ok){
+      el('msg').textContent = data.error || 'Signup failed';
+      return;
+    }
+
+    const u = {
+      id: data.user.id,
+      name: data.user.name,
+      mobile: data.user.mobile,
+      email: data.user.email,
+      refCode: data.user.referral_code,
+      status: data.user.status || 'ACTIVE',
+      coins: Number(data.user.coins || 1000),
+      referralEarned: 0,
+      joined: data.user.created_at || now(),
+      lastSeen: Date.now()
+    };
+
+    localStorage.setItem('authToken', data.token);
+    localStorage.setItem(U, JSON.stringify(u));
+    localStorage.setItem(C + ':' + u.id, String(u.coins));
+    localStorage.setItem(key(H), '[]');
+    localStorage.setItem(key(T), '[]');
+
+    location.href = 'app.html';
+
+  } catch(error) {
+    console.error(error);
+    el('msg').textContent = 'Server connection failed.';
+  }
 }
 async function login(){
-  const id=el('lId').value.trim(),pass=el('lPass').value;
-  if(!id||!pass)return el('msg').textContent='Enter login details.';
-  el('msg').textContent='Logging in...';
-  try{
-    const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier:id,password:pass})});
-    const d=await r.json();
-    if(!r.ok)throw new Error(d.error||'Login failed');
-    const u={...d.user,refCode:d.user.referralCode||d.user.refCode,lastSeen:Date.now()};
-    localStorage.setItem('authToken',d.token);localStorage.setItem(U,JSON.stringify(u));localStorage.setItem(key(C),String(u.coins||1000));
-    location.href='app.html';
-  }catch(e){el('msg').textContent=e.message||'Login failed';}
+  const identifier = el('lId').value.trim();
+  const password = el('lPass').value;
+
+  if(!identifier || !password){
+    el('msg').textContent = 'Enter login details.';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        identifier,
+        password
+      })
+    });
+
+    const data = await res.json();
+
+    if(!res.ok){
+      el('msg').textContent = data.error || 'Login failed';
+      return;
+    }
+
+    const u = {
+      id: data.user.id,
+      name: data.user.name,
+      mobile: data.user.mobile,
+      email: data.user.email,
+      refCode: data.user.referralCode || '',
+      status: data.user.status || 'ACTIVE',
+      coins: Number(data.user.coins || 1000),
+      referralEarned: 0,
+      joined: now(),
+      lastSeen: Date.now()
+    };
+
+    localStorage.setItem('authToken', data.token);
+    localStorage.setItem(U, JSON.stringify(u));
+    localStorage.setItem(C + ':' + u.id, String(u.coins));
+
+    location.href = 'app.html';
+
+  } catch(error) {
+    console.error(error);
+    el('msg').textContent = 'Server connection failed.';
+  }
 }
 async function syncServerUser(){
   const t=localStorage.getItem('authToken'); if(!t)return null;
