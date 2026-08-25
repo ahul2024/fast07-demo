@@ -6,12 +6,28 @@ const jwt=require('jsonwebtoken');
 const {Pool}=require('pg');
 const path=require('path');
 const crypto=require('crypto');
+const fs = require('fs');
 const app=express();
 const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_SSL==='true'?{rejectUnauthorized:false}:false});
 app.use(cors({origin:process.env.CORS_ORIGIN||true}));
 app.use(express.json({limit:'1mb'}));
 app.use(express.static(__dirname));
 const q=(text,params=[])=>pool.query(text,params);
+const q=(text,params=[])=>pool.query(text,params);
+
+async function initDatabase() {
+  try {
+    const schemaPath = path.join(__dirname, 'schema.sql');
+    const schema = fs.readFileSync(schemaPath, 'utf8');
+
+    await pool.query(schema);
+
+    console.log('Database schema initialized successfully.');
+  } catch (error) {
+    console.error('Database initialization failed:', error.message);
+    process.exit(1);
+  }
+}
 function token(u){return jwt.sign({id:u.id,role:u.role||'USER'},process.env.JWT_SECRET,{expiresIn:'7d'})}
 async function auth(req,res,next){try{const h=req.headers.authorization||'';if(!h.startsWith('Bearer '))return res.status(401).json({error:'Authentication required'});const p=jwt.verify(h.slice(7),process.env.JWT_SECRET);if(p.role==='ADMIN'){req.user={id:'ADMIN',role:'ADMIN',name:'Admin'};return next()}const r=await q('SELECT id,name,mobile,email,status,role,coins,referral_code,created_at,last_seen FROM users WHERE id=$1',[p.id]);if(!r.rows[0])return res.status(401).json({error:'User not found'});req.user=r.rows[0];next()}catch(e){res.status(401).json({error:'Invalid or expired token'})}}
 function admin(req,res,next){if(req.user?.role==='ADMIN')return next();res.status(403).json({error:'Admin only'})}
@@ -31,4 +47,15 @@ app.post('/api/admin/requests/:id/reject',auth,admin,async(req,res)=>{const clie
 app.get('/api/admin/activities',auth,admin,async(req,res)=>{const r=await q("SELECT a.*,u.name user_name,u.mobile FROM activities a LEFT JOIN users u ON u.id=a.user_id ORDER BY a.created_at DESC LIMIT 200");res.json({activities:r.rows})});
 app.patch('/api/admin/users/:id',auth,admin,async(req,res)=>{const {status,coins}=req.body;const fields=[],vals=[];if(status){fields.push(`status=$${vals.length+1}`);vals.push(status)}if(Number.isInteger(Number(coins))&&Number(coins)>=0){fields.push(`coins=$${vals.length+1}`);vals.push(Number(coins))}if(!fields.length)return res.status(400).json({error:'Nothing to update'});vals.push(req.params.id);const r=await q(`UPDATE users SET ${fields.join(',')} WHERE id=$${vals.length} RETURNING id,name,status,coins`,vals);res.json({user:r.rows[0]})});
 app.get(/.*/,(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
-app.listen(process.env.PORT||3000,()=>console.log(`FAST07 API running on http://localhost:${process.env.PORT||3000}`));
+async function startServer() {
+  await initDatabase();
+
+  app.listen(
+    process.env.PORT || 3000,
+    () => console.log(
+      `FAST07 API running on http://localhost:${process.env.PORT || 3000}`
+    )
+  );
+}
+
+startServer();
