@@ -1,0 +1,92 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FERARI 007 EARNING - Admin Dashboard</title><link rel="stylesheet" href="style.css"><style>
+.admin-wrap{max-width:1200px;margin:auto}.admin-top{display:flex;justify-content:space-between;align-items:center;padding:18px 0}.admin-title{color:#ffd21a;font-family:Georgia,"Times New Roman",serif;font-size:30px;font-weight:900;letter-spacing:1.2px;text-shadow:0 0 14px rgba(255,210,26,.25)}.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}.metric{padding:18px;border:1px solid #8e670e;border-radius:16px;background:rgba(8,8,8,.92)}.metric small{color:#aaa}.metric strong{display:block;color:#ffd21a;font-size:25px;margin-top:8px}.panel{margin-top:14px;padding:18px;border:1px solid #8e670e;border-radius:16px;background:rgba(8,8,8,.92)}.table{width:100%;border-collapse:collapse}.table th,.table td{padding:9px;border-bottom:1px solid #333;text-align:left;font-size:12px}.table th{color:#ffd21a}.search,.panel input,.panel select,.panel textarea{width:100%;box-sizing:border-box;padding:11px;border-radius:9px;border:1px solid #765a12;background:#151515;color:#fff;margin:4px 0 8px}.actions{display:flex;gap:6px;flex-wrap:wrap}.actions button{padding:7px 9px;font-size:11px}.status-pending{color:#ffd21a}.status-approved{color:#39d36b}.status-rejected,.status-blocked{color:#ff6b6b}.status-active{color:#39d36b}.test-mode{background:linear-gradient(145deg,#111,#302000)}.test-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.test-actions{display:flex;gap:10px;margin-top:8px}.notice{font-size:11px;color:#aaa}.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.request-card{padding:12px;border:1px solid #3b3015;border-radius:12px;margin:8px 0;background:#101010}.pill{display:inline-block;padding:4px 8px;border-radius:20px;background:#292000;color:#ffd21a;font-size:10px}.live-dot{color:#39d36b}@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.table{min-width:900px}.panel{overflow-x:auto}.test-grid{grid-template-columns:1fr}}
+</style></head><body><div class="admin-wrap">
+<div class="admin-top"><div><div class="admin-title">FERARI 007 EARNING</div><small>Professional Virtual Demo Admin Panel</small></div><div class="actions"><button onclick="adminRefresh()">↻ Refresh</button><button onclick="logout()">Logout</button></div></div>
+<div class="grid">
+<div class="metric"><small>REGISTERED USERS</small><strong id="userCount">0</strong></div><div class="metric"><small>ACTIVE USERS</small><strong id="activeUsers">0</strong></div><div class="metric"><small>TOTAL VIRTUAL COINS</small><strong>🪙 <span id="totalCoins">0</span></strong></div><div class="metric"><small>PENDING REQUESTS</small><strong id="pendingRequests">0</strong></div><div class="metric"><small>GAME ROUNDS</small><strong id="rounds">0</strong></div>
+</div>
+<div class="panel test-mode"><h3>🧪 Admin Test Mode</h3><p class="notice">For virtual/demo UI testing only. Any selected test result is visibly marked <b>ADMIN TEST</b>; this is not a real-money game control.</p><div class="test-grid"><label>Test Number<select id="testNumber"><option value="">Auto</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option></select></label><label>Test Colour<select id="testColour"><option value="">Auto</option><option>Red</option><option>Green</option><option>Violet</option></select></label></div><div class="test-actions"><button onclick="saveAdminTest()">SAVE TEST FOR CURRENT PERIOD</button><button onclick="clearAdminTest()">CLEAR</button></div><div id="testStatus" class="status-approved"></div></div>
+<div class="panel"><h3>👥 User Management</h3><input class="search" id="search" placeholder="Search name, mobile, email or ID" oninput="renderUsers()"><div style="overflow:auto"><table class="table"><thead><tr><th>User ID</th><th>Name</th><th>Mobile</th><th>Email</th><th>Coins</th><th>Status</th><th>Last Seen</th><th>Actions</th></tr></thead><tbody id="users"></tbody></table></div></div>
+<div class="two"><div class="panel"><h3>💳 Deposit Requests</h3><div id="depositRequests"></div></div><div class="panel"><h3>💸 Withdrawal Requests</h3><div id="withdrawRequests"></div></div></div>
+<div class="panel"><h3>🟢 Live User Activity</h3><div style="overflow:auto"><table class="table"><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Details</th><th>Coins</th></tr></thead><tbody id="activities"></tbody></table></div></div>
+<div class="panel"><h3>🎮 Game Rounds & History</h3><div style="overflow:auto"><table class="table"><thead><tr><th>Period</th><th>Number</th><th>Colour</th><th>Size</th><th>Test</th><th>Time</th></tr></thead><tbody id="games"></tbody></table></div></div>
+<div class="two"><div class="panel"><h3>🛟 Support Tickets</h3><div id="supportRequests"></div></div><div class="panel"><h3>🎁 Referral Activity</h3><div id="referrals"></div></div></div>
+<p class="notice">DEMO ONLY • Virtual coins • No real-money deposits/withdrawals. Passwords are not displayed in this panel.</p></div>
+<script>
+const token=()=>localStorage.getItem('fast07_admin_token')||'';
+const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+async function api(path,opts={}){
+ const headers={'Content-Type':'application/json',...(opts.headers||{})}; const t=token();
+ if(t)headers.Authorization='Bearer '+t;
+ const r=await fetch(path,{...opts,headers}); const d=await r.json().catch(()=>({}));
+ if(!r.ok)throw new Error(d.error||'Request failed'); return d;
+}
+function logout(){localStorage.removeItem('fast07_admin_token');sessionStorage.removeItem('adminLogged');location.href='admin-login.html'}
+
+let serverUsers=[],serverRequests=[],serverActivities=[];
+async function loadAll(){
+ try{
+  const [u,r,a]=await Promise.all([api('/api/admin/users'),api('/api/admin/requests'),api('/api/admin/activities')]);
+  serverUsers=u.users||[]; serverRequests=r.requests||[]; serverActivities=a.activities||[];
+  renderAll();
+ }catch(e){
+  if(/Authentication|Invalid|expired|Admin only/i.test(e.message))return logout();
+  document.getElementById('activities').innerHTML='<tr><td colspan="5">'+esc(e.message)+'</td></tr>';
+ }
+}
+function renderUsers(){
+ const q=(document.getElementById('search').value||'').toLowerCase();
+ const u=serverUsers.filter(x=>JSON.stringify(x).toLowerCase().includes(q));
+ document.getElementById('users').innerHTML=u.map(x=>`<tr>
+ <td>${esc(x.id)}</td><td>${esc(x.name)}</td><td>${esc(x.mobile)}</td><td>${esc(x.email)}</td>
+ <td>🪙 ${esc(x.coins??0)}</td><td class="status-${String(x.status||'ACTIVE').toLowerCase()}">${esc(x.status||'ACTIVE')}</td>
+ <td>${esc(x.last_seen||'—')}</td><td class="actions"><button onclick="adjustCoins('${x.id}')">Coins</button>
+ <button onclick="toggleUser('${x.id}','${x.status}')">${x.status==='BLOCKED'?'Unblock':'Block'}</button></td></tr>`).join('')||'<tr><td colspan="8">No users found.</td></tr>';
+}
+function details(x){
+ let d=x.details||{}; if(typeof d==='string'){try{d=JSON.parse(d)}catch(e){d={}}}
+ return x.type==='DEPOSIT'?`UTR No.: <b>${esc(d.utr||'—')}</b><br>Reference: ${esc(d.reference||'—')}`:`Bank: ${esc(d.bank||'—')} • Account: ${esc(d.account||'—')} • IFSC: ${esc(d.ifsc||'—')}`;
+}
+function renderRequests(){
+ const card=x=>`<div class="request-card"><b>${esc(x.user_name)}</b> <span class="pill">${esc(x.status)}</span>
+ <br>🪙 ${Number(x.amount||0)} coins<br><small>${details(x)}<br>${esc(x.created_at||'')}</small>
+ ${x.status==='PENDING'?`<div class="actions" style="margin-top:8px"><button onclick="approveRequest(${x.id})">✓ Approve</button><button onclick="rejectRequest(${x.id})">✕ Reject</button></div>`:''}</div>`;
+ document.getElementById('depositRequests').innerHTML=serverRequests.filter(x=>x.type==='DEPOSIT').map(card).join('')||'<small>No deposit requests.</small>';
+ document.getElementById('withdrawRequests').innerHTML=serverRequests.filter(x=>x.type==='WITHDRAWAL').map(card).join('')||'<small>No withdrawal requests.</small>';
+}
+function renderActivities(){
+ document.getElementById('activities').innerHTML=serverActivities.slice(0,100).map(x=>`<tr><td>${esc(x.created_at||'-')}</td><td>${esc(x.user_name||'-')}<br><small>${esc(x.user_id||'')}</small></td><td>${esc(x.action||'-')}</td><td>${esc(x.details||'-')}</td><td>🪙 ${esc(x.coins??'-')}</td></tr>`).join('')||'<tr><td colspan="5">No activity yet.</td></tr>';
+}
+function renderAll(){
+ document.getElementById('userCount').textContent=serverUsers.length;
+ document.getElementById('activeUsers').textContent=serverUsers.filter(x=>x.status==='ACTIVE').length;
+ document.getElementById('totalCoins').textContent=serverUsers.reduce((n,x)=>n+Number(x.coins||0),0);
+ document.getElementById('pendingRequests').textContent=serverRequests.filter(x=>x.status==='PENDING').length;
+ document.getElementById('rounds').textContent=serverActivities.filter(x=>String(x.action||'').includes('ROUND')).length;
+ renderUsers();renderRequests();renderActivities();
+}
+async function adjustCoins(id){
+ const u=serverUsers.find(x=>String(x.id)===String(id)); if(!u)return;
+ const v=prompt('Set virtual coin balance for '+u.name,u.coins||0);
+ if(v===null||!/^\d+$/.test(v))return alert('Enter a whole number.');
+ try{await api('/api/admin/users/'+id,{method:'PATCH',body:JSON.stringify({coins:Number(v)})});await loadAll()}catch(e){alert(e.message)}
+}
+async function toggleUser(id,status){
+ try{await api('/api/admin/users/'+id,{method:'PATCH',body:JSON.stringify({status:status==='BLOCKED'?'ACTIVE':'BLOCKED'})});await loadAll()}catch(e){alert(e.message)}
+}
+async function approveRequest(id){
+ try{await api('/api/admin/requests/'+id+'/approve',{method:'POST'});await loadAll()}catch(e){alert(e.message)}
+}
+async function rejectRequest(id){
+ try{await api('/api/admin/requests/'+id+'/reject',{method:'POST'});await loadAll()}catch(e){alert(e.message)}
+}
+/* Test mode remains visibly marked and local-only, as in the original demo. */
+function saveAdminTest(){const period=String(1000000000+Math.floor(Date.now()/30000)),number=document.getElementById('testNumber').value,colour=document.getElementById('testColour').value;localStorage.setItem('adminTestResult',JSON.stringify({period,number,colour,time:new Date().toLocaleString()}));document.getElementById('testStatus').textContent='Saved for period '+period+' • ADMIN TEST';}
+function clearAdminTest(){localStorage.removeItem('adminTestResult');document.getElementById('testStatus').textContent='Cleared';}
+function adminRefresh(){loadAll()}
+if(!token()||sessionStorage.getItem('adminLogged')!=='1')logout();
+else{
+ loadAll();
+ setInterval(loadAll,3000);
+}
+</script>
