@@ -5,93 +5,101 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
-const path = require('path');
-const crypto = require('crypto');
-const fs = require('fs');
 
 const app = express();
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl:
-    process.env.DATABASE_SSL === 'true'
-      ? { rejectUnauthorized: false }
-      : false
-});
-
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || true
-}));
-
-app.use(express.json({ limit: '1mb' }));
-app.use(express.static(__dirname));
-
-const q = (text, params = []) => pool.query(text, params);
-
-
 /* =========================
-   DATABASE INITIALIZATION
+   CONFIGURATION
 ========================= */
 
-async function initDatabase() {
-  try {
-    const schemaPath = path.join(__dirname, 'schema.sql');
+const PORT = process.env.PORT || 3000;
 
-    const schema = fs.readFileSync(
-      schemaPath,
-      'utf8'
-    );
+const JWT_SECRET = process.env.JWT_SECRET;
 
-    await pool.query(schema);
+if (!JWT_SECRET) {
+  console.error('ERROR: JWT_SECRET is not configured.');
+  process.exit(1);
+}
 
-    console.log(
-      'Database schema initialized successfully.'
-    );
-
-  } catch (error) {
-
-    console.error(
-      'DATABASE INITIALIZATION ERROR:',
-      error
-    );
-
-    console.error(
-      'MESSAGE:',
-      error.message
-    );
-
-    console.error(
-      'CODE:',
-      error.code
-    );
-
-    console.error(
-      'DETAIL:',
-      error.detail
-    );
-
-    console.error(
-      'HINT:',
-      error.hint
-    );
-
-    process.exit(1);
-  }
+if (!process.env.DATABASE_URL) {
+  console.error('ERROR: DATABASE_URL is not configured.');
+  process.exit(1);
 }
 
 
 /* =========================
-   JWT TOKEN
+   DATABASE
 ========================= */
 
-function token(u) {
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+
+  ssl:
+    process.env.DATABASE_SSL === 'true'
+      ? { rejectUnauthorized: false }
+      : false,
+
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000
+});
+
+
+const q = (text, params = []) => {
+  return pool.query(text, params);
+};
+
+
+/* =========================
+   MIDDLEWARE
+========================= */
+
+app.use(
+  cors({
+    origin: true,
+    credentials: false
+  })
+);
+
+app.use(
+  express.json({
+    limit: '1mb'
+  })
+);
+
+
+/*
+  Serve frontend files directly.
+
+  index.html
+  admin.html
+  admin-login.html
+  app.html
+  app.js
+  style.css
+
+  will be served from the same folder.
+*/
+
+app.use(
+  express.static(__dirname)
+);
+
+
+/* =========================
+   HELPER
+========================= */
+
+function createToken(user) {
 
   return jwt.sign(
     {
-      id: u.id,
-      role: u.role || 'USER'
+      id: user.id,
+      role: user.role || 'USER'
     },
-    process.env.JWT_SECRET,
+
+    JWT_SECRET,
+
     {
       expiresIn: '7d'
     }
@@ -107,10 +115,10 @@ async function auth(req, res, next) {
 
   try {
 
-    const h =
+    const header =
       req.headers.authorization || '';
 
-    if (!h.startsWith('Bearer ')) {
+    if (!header.startsWith('Bearer ')) {
 
       return res.status(401).json({
         error: 'Authentication required'
@@ -118,24 +126,31 @@ async function auth(req, res, next) {
 
     }
 
-    const p = jwt.verify(
-      h.slice(7),
-      process.env.JWT_SECRET
-    );
+
+    const token =
+      header.slice(7);
+
+
+    const payload =
+      jwt.verify(
+        token,
+        JWT_SECRET
+      );
 
 
     /*
-      IMPORTANT:
-      Admin token database ke users table
+      ADMIN TOKEN
+
+      Admin database users table
       me search nahi hoga.
     */
 
-    if (p.role === 'ADMIN') {
+    if (payload.role === 'ADMIN') {
 
       req.user = {
         id: 'ADMIN',
         role: 'ADMIN',
-        name: 'Admin'
+        name: 'Administrator'
       };
 
       return next();
@@ -143,11 +158,12 @@ async function auth(req, res, next) {
 
 
     /*
-      Normal USER authentication
+      NORMAL USER
     */
 
-    const r = await q(
-      `SELECT
+    const result = await q(
+      `
+      SELECT
         id,
         name,
         mobile,
@@ -158,13 +174,14 @@ async function auth(req, res, next) {
         referral_code,
         created_at,
         last_seen
-       FROM users
-       WHERE id=$1`,
-      [p.id]
+      FROM users
+      WHERE id = $1
+      `,
+      [payload.id]
     );
 
 
-    if (!r.rows[0]) {
+    if (!result.rows.length) {
 
       return res.status(401).json({
         error: 'User not found'
@@ -173,22 +190,26 @@ async function auth(req, res, next) {
     }
 
 
-    req.user = r.rows[0];
+    req.user =
+      result.rows[0];
+
 
     next();
 
-  } catch (e) {
+  } catch (error) {
 
     console.error(
       'AUTH ERROR:',
-      e
+      error.message
     );
+
 
     return res.status(401).json({
       error: 'Invalid or expired token'
     });
 
   }
+
 }
 
 
@@ -198,23 +219,30 @@ async function auth(req, res, next) {
 
 function admin(req, res, next) {
 
-  if (req.user?.role === 'ADMIN') {
+  if (
+    req.user &&
+    req.user.role === 'ADMIN'
+  ) {
+
     return next();
+
   }
+
 
   return res.status(403).json({
     error: 'Admin only'
   });
+
 }
 
 
 /* =========================
-   HEALTH
+   HEALTH CHECK
 ========================= */
 
 app.get(
   '/api/health',
-  async (_, res) => {
+  async (req, res) => {
 
     try {
 
@@ -222,14 +250,21 @@ app.get(
 
       res.json({
         ok: true,
-        service: 'FAST07 demo API'
+        service: 'FAST07 Demo API',
+        database: 'connected'
       });
 
-    } catch (e) {
+    } catch (error) {
+
+      console.error(
+        'HEALTH ERROR:',
+        error.message
+      );
 
       res.status(503).json({
         ok: false,
-        error: 'Database unavailable'
+        service: 'FAST07 Demo API',
+        database: 'unavailable'
       });
 
     }
@@ -258,6 +293,7 @@ app.post(
         process.env.ADMIN_ID ||
         'admin';
 
+
       const adminPassword =
         process.env.ADMIN_PASSWORD ||
         'Admin@12345';
@@ -269,28 +305,40 @@ app.post(
       ) {
 
         return res.status(401).json({
-          error: 'Invalid admin credentials'
+          error:
+            'Invalid admin credentials'
         });
 
       }
 
 
-      const u = {
+      const adminUser = {
         id: 'ADMIN',
         role: 'ADMIN'
       };
 
 
+      const adminToken =
+        createToken(adminUser);
+
+
       res.json({
-        token: token(u)
+        token: adminToken,
+        user: {
+          id: 'ADMIN',
+          role: 'ADMIN',
+          name: 'Administrator'
+        }
       });
 
-    } catch (e) {
+
+    } catch (error) {
 
       console.error(
         'ADMIN LOGIN ERROR:',
-        e
+        error
       );
+
 
       res.status(500).json({
         error: 'Admin login failed'
@@ -318,7 +366,7 @@ app.post(
         email,
         password,
         referralCode = ''
-      } = req.body;
+      } = req.body || {};
 
 
       if (
@@ -329,25 +377,45 @@ app.post(
       ) {
 
         return res.status(400).json({
-          error: 'Missing required fields'
+          error:
+            'Missing required fields'
         });
 
       }
 
 
-      const ex = await q(
-        `SELECT id
-         FROM users
-         WHERE email=$1
-         OR mobile=$2`,
-        [
-          email.toLowerCase(),
-          mobile
-        ]
-      );
+      const normalizedEmail =
+        String(email)
+          .trim()
+          .toLowerCase();
 
 
-      if (ex.rows[0]) {
+      const normalizedMobile =
+        String(mobile)
+          .trim();
+
+
+      /*
+        Check duplicate user
+      */
+
+      const existing =
+        await q(
+          `
+          SELECT id
+          FROM users
+          WHERE email = $1
+             OR mobile = $2
+          LIMIT 1
+          `,
+          [
+            normalizedEmail,
+            normalizedMobile
+          ]
+        );
+
+
+      if (existing.rows.length) {
 
         return res.status(409).json({
           error:
@@ -357,90 +425,139 @@ app.post(
       }
 
 
-      let ref = null;
+      /*
+        Referral
+      */
+
+      let referredBy = null;
 
 
       if (referralCode) {
 
-        ref = (
+        const referral =
           await q(
-            `SELECT id
-             FROM users
-             WHERE referral_code=$1`,
+            `
+            SELECT id
+            FROM users
+            WHERE referral_code = $1
+            LIMIT 1
+            `,
             [
-              referralCode.toUpperCase()
+              String(
+                referralCode
+              )
+                .trim()
+                .toUpperCase()
             ]
-          )
-        ).rows[0];
+          );
+
+
+        if (referral.rows.length) {
+
+          referredBy =
+            referral.rows[0].id;
+
+        }
 
       }
 
 
-      const hash =
+      /*
+        Password hash
+      */
+
+      const passwordHash =
         await bcrypt.hash(
           password,
           12
         );
 
 
-      const code =
+      /*
+        Referral code
+      */
+
+      const generatedCode =
         'REF-' +
-        crypto
-          .randomBytes(4)
-          .toString('hex')
+        Math.random()
+          .toString(36)
+          .substring(2, 8)
           .toUpperCase();
 
 
-      const r = await q(
-        `INSERT INTO users
-        (
-          name,
-          mobile,
-          email,
-          password_hash,
-          referral_code,
-          referred_by,
-          coins
-        )
-        VALUES
-        ($1,$2,$3,$4,$5,$6,$7)
-        RETURNING
-          id,
-          name,
-          mobile,
-          email,
-          status,
-          coins,
-          referral_code,
-          created_at,
-          last_seen`,
-        [
-          name,
-          mobile,
-          email.toLowerCase(),
-          hash,
-          code,
-          ref?.id || null,
-          ref ? 1200 : 1000
-        ]
-      );
+      /*
+        New virtual/demo account
+      */
+
+      const result =
+        await q(
+          `
+          INSERT INTO users
+          (
+            name,
+            mobile,
+            email,
+            password_hash,
+            referral_code,
+            referred_by,
+            coins
+          )
+          VALUES
+          (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7
+          )
+          RETURNING
+            id,
+            name,
+            mobile,
+            email,
+            status,
+            coins,
+            referral_code,
+            created_at,
+            last_seen
+          `,
+          [
+            name.trim(),
+            normalizedMobile,
+            normalizedEmail,
+            passwordHash,
+            generatedCode,
+            referredBy,
+            referredBy ? 1200 : 1000
+          ]
+        );
 
 
-      const u = r.rows[0];
+      const user =
+        result.rows[0];
 
 
-      if (ref) {
+      /*
+        Referral bonus
+      */
+
+      if (referredBy) {
 
         await q(
-          `UPDATE users
-           SET coins=coins+100
-           WHERE id=$1`,
-          [ref.id]
+          `
+          UPDATE users
+          SET coins = coins + 100
+          WHERE id = $1
+          `,
+          [referredBy]
         );
 
 
         await q(
-          `INSERT INTO transactions
+          `
+          INSERT INTO transactions
           (
             user_id,
             type,
@@ -455,11 +572,12 @@ app.post(
             100,
             'APPROVED',
             $2
-          )`,
+          )
+          `,
           [
-            ref.id,
+            referredBy,
             JSON.stringify({
-              newUserId: u.id
+              newUserId: user.id
             })
           ]
         );
@@ -467,8 +585,13 @@ app.post(
       }
 
 
+      /*
+        Activity
+      */
+
       await q(
-        `INSERT INTO activities
+        `
+        INSERT INTO activities
         (
           user_id,
           action,
@@ -481,25 +604,32 @@ app.post(
           'REGISTER',
           'New demo account created',
           $2
-        )`,
+        )
+        `,
         [
-          u.id,
-          u.coins
+          user.id,
+          user.coins
         ]
       );
 
 
+      const userToken =
+        createToken(user);
+
+
       res.json({
-        token: token(u),
-        user: u
+        token: userToken,
+        user
       });
 
-    } catch (e) {
+
+    } catch (error) {
 
       console.error(
         'SIGNUP ERROR:',
-        e
+        error
       );
+
 
       res.status(500).json({
         error: 'Signup failed'
@@ -524,32 +654,35 @@ app.post(
       const {
         identifier,
         password
-      } = req.body;
+      } = req.body || {};
 
 
-      const r = await q(
-        `SELECT *
-         FROM users
-         WHERE email=$1
-         OR mobile=$1`,
-        [
-          String(
-            identifier || ''
-          ).toLowerCase()
-        ]
-      );
+      const loginId =
+        String(
+          identifier || ''
+        )
+          .trim()
+          .toLowerCase();
 
 
-      const u = r.rows[0];
+      const result =
+        await q(
+          `
+          SELECT *
+          FROM users
+          WHERE LOWER(email) = $1
+             OR mobile = $1
+          LIMIT 1
+          `,
+          [loginId]
+        );
 
 
-      if (
-        !u ||
-        !(await bcrypt.compare(
-          password || '',
-          u.password_hash
-        ))
-      ) {
+      const user =
+        result.rows[0];
+
+
+      if (!user) {
 
         return res.status(401).json({
           error:
@@ -559,25 +692,48 @@ app.post(
       }
 
 
-      if (u.status === 'BLOCKED') {
+      const passwordOk =
+        await bcrypt.compare(
+          password || '',
+          user.password_hash
+        );
+
+
+      if (!passwordOk) {
+
+        return res.status(401).json({
+          error:
+            'Invalid login details'
+        });
+
+      }
+
+
+      if (
+        user.status === 'BLOCKED'
+      ) {
 
         return res.status(403).json({
-          error: 'Account blocked'
+          error:
+            'Account blocked'
         });
 
       }
 
 
       await q(
-        `UPDATE users
-         SET last_seen=NOW()
-         WHERE id=$1`,
-        [u.id]
+        `
+        UPDATE users
+        SET last_seen = NOW()
+        WHERE id = $1
+        `,
+        [user.id]
       );
 
 
       await q(
-        `INSERT INTO activities
+        `
+        INSERT INTO activities
         (
           user_id,
           action,
@@ -590,36 +746,44 @@ app.post(
           'LOGIN',
           'User logged in',
           $2
-        )`,
+        )
+        `,
         [
-          u.id,
-          u.coins
+          user.id,
+          user.coins
         ]
       );
 
 
+      const userToken =
+        createToken(user);
+
+
       res.json({
-        token: token(u),
+
+        token: userToken,
 
         user: {
-          id: u.id,
-          name: u.name,
-          mobile: u.mobile,
-          email: u.email,
-          status: u.status,
-          coins: u.coins,
+          id: user.id,
+          name: user.name,
+          mobile: user.mobile,
+          email: user.email,
+          status: user.status,
+          coins: user.coins,
           referralCode:
-            u.referral_code
+            user.referral_code
         }
 
       });
 
-    } catch (e) {
+
+    } catch (error) {
 
       console.error(
         'LOGIN ERROR:',
-        e
+        error
       );
+
 
       res.status(500).json({
         error: 'Login failed'
@@ -649,7 +813,7 @@ app.get(
 
 
 /* =========================
-   TRANSACTIONS
+   USER TRANSACTIONS
 ========================= */
 
 app.get(
@@ -657,26 +821,48 @@ app.get(
   auth,
   async (req, res) => {
 
-    const r = await q(
-      `SELECT
-        id,
-        type,
-        amount,
-        status,
-        reference,
-        meta,
-        created_at
-       FROM transactions
-       WHERE user_id=$1
-       ORDER BY created_at DESC
-       LIMIT 200`,
-      [req.user.id]
-    );
+    try {
+
+      const result =
+        await q(
+          `
+          SELECT
+            id,
+            type,
+            amount,
+            status,
+            reference,
+            meta,
+            created_at
+          FROM transactions
+          WHERE user_id = $1
+          ORDER BY created_at DESC
+          LIMIT 200
+          `,
+          [req.user.id]
+        );
 
 
-    res.json({
-      transactions: r.rows
-    });
+      res.json({
+        transactions:
+          result.rows
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        'TRANSACTIONS ERROR:',
+        error
+      );
+
+
+      res.status(500).json({
+        error:
+          'Unable to load transactions'
+      });
+
+    }
 
   }
 );
@@ -684,7 +870,7 @@ app.get(
 
 /* =========================
    DEPOSIT REQUEST
-   VIRTUAL COINS
+   VIRTUAL COINS ONLY
 ========================= */
 
 app.post(
@@ -692,79 +878,106 @@ app.post(
   auth,
   async (req, res) => {
 
-    const amount =
-      Number(req.body.amount);
+    try {
+
+      const amount =
+        Number(req.body.amount);
 
 
-    if (
-      !Number.isInteger(amount) ||
-      amount < 1
-    ) {
+      if (
+        !Number.isInteger(amount) ||
+        amount < 1
+      ) {
 
-      return res.status(400).json({
-        error: 'Invalid amount'
+        return res.status(400).json({
+          error:
+            'Invalid amount'
+        });
+
+      }
+
+
+      const result =
+        await q(
+          `
+          INSERT INTO requests
+          (
+            user_id,
+            type,
+            amount,
+            details
+          )
+          VALUES
+          (
+            $1,
+            'DEPOSIT',
+            $2,
+            $3
+          )
+          RETURNING *
+          `,
+          [
+            req.user.id,
+            amount,
+            JSON.stringify(
+              req.body.details || {}
+            )
+          ]
+        );
+
+
+      const request =
+        result.rows[0];
+
+
+      await q(
+        `
+        INSERT INTO transactions
+        (
+          user_id,
+          type,
+          amount,
+          status,
+          meta
+        )
+        VALUES
+        (
+          $1,
+          'DEPOSIT',
+          $2,
+          'PENDING',
+          $3
+        )
+        `,
+        [
+          req.user.id,
+          amount,
+          JSON.stringify({
+            requestId: request.id
+          })
+        ]
+      );
+
+
+      res.json({
+        request
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        'DEPOSIT REQUEST ERROR:',
+        error
+      );
+
+
+      res.status(500).json({
+        error:
+          'Deposit request failed'
       });
 
     }
-
-
-    const r = await q(
-      `INSERT INTO requests
-      (
-        user_id,
-        type,
-        amount,
-        details
-      )
-      VALUES
-      (
-        $1,
-        'DEPOSIT',
-        $2,
-        $3
-      )
-      RETURNING *`,
-      [
-        req.user.id,
-        amount,
-        JSON.stringify(
-          req.body.details || {}
-        )
-      ]
-    );
-
-
-    await q(
-      `INSERT INTO transactions
-      (
-        user_id,
-        type,
-        amount,
-        status,
-        meta
-      )
-      VALUES
-      (
-        $1,
-        'DEPOSIT',
-        $2,
-        'PENDING',
-        $3
-      )`,
-      [
-        req.user.id,
-        amount,
-        JSON.stringify({
-          requestId:
-            r.rows[0].id
-        })
-      ]
-    );
-
-
-    res.json({
-      request: r.rows[0]
-    });
 
   }
 );
@@ -772,7 +985,7 @@ app.post(
 
 /* =========================
    WITHDRAWAL REQUEST
-   VIRTUAL COINS
+   VIRTUAL COINS ONLY
 ========================= */
 
 app.post(
@@ -780,105 +993,172 @@ app.post(
   auth,
   async (req, res) => {
 
-    const amount =
-      Number(req.body.amount);
+    const client =
+      await pool.connect();
 
 
-    if (
-      !Number.isInteger(amount) ||
-      amount < 1
-    ) {
+    try {
 
-      return res.status(400).json({
-        error: 'Invalid amount'
-      });
-
-    }
+      const amount =
+        Number(req.body.amount);
 
 
-    const c = await q(
-      `UPDATE users
-       SET
-         coins=coins-$1,
-         last_seen=NOW()
-       WHERE id=$2
-       AND coins >= $1
-       RETURNING coins`,
-      [
-        amount,
-        req.user.id
-      ]
-    );
+      if (
+        !Number.isInteger(amount) ||
+        amount < 1
+      ) {
+
+        return res.status(400).json({
+          error:
+            'Invalid amount'
+        });
+
+      }
 
 
-    if (!c.rows[0]) {
+      await client.query(
+        'BEGIN'
+      );
 
-      return res.status(400).json({
-        error:
+
+      /*
+        Reserve virtual coins
+      */
+
+      const coinResult =
+        await client.query(
+          `
+          UPDATE users
+          SET
+            coins = coins - $1,
+            last_seen = NOW()
+          WHERE id = $2
+            AND coins >= $1
+          RETURNING coins
+          `,
+          [
+            amount,
+            req.user.id
+          ]
+        );
+
+
+      if (!coinResult.rows.length) {
+
+        throw new Error(
           'Insufficient virtual coins'
+        );
+
+      }
+
+
+      /*
+        Create request
+      */
+
+      const requestResult =
+        await client.query(
+          `
+          INSERT INTO requests
+          (
+            user_id,
+            type,
+            amount,
+            details
+          )
+          VALUES
+          (
+            $1,
+            'WITHDRAWAL',
+            $2,
+            $3
+          )
+          RETURNING *
+          `,
+          [
+            req.user.id,
+            amount,
+            JSON.stringify(
+              req.body.details || {}
+            )
+          ]
+        );
+
+
+      const request =
+        requestResult.rows[0];
+
+
+      /*
+        Transaction record
+      */
+
+      await client.query(
+        `
+        INSERT INTO transactions
+        (
+          user_id,
+          type,
+          amount,
+          status,
+          meta
+        )
+        VALUES
+        (
+          $1,
+          'WITHDRAWAL',
+          $2,
+          'PENDING',
+          $3
+        )
+        `,
+        [
+          req.user.id,
+          -amount,
+          JSON.stringify({
+            requestId: request.id
+          })
+        ]
+      );
+
+
+      await client.query(
+        'COMMIT'
+      );
+
+
+      res.json({
+        request,
+        coins:
+          coinResult.rows[0].coins
       });
 
+
+    } catch (error) {
+
+      await client.query(
+        'ROLLBACK'
+      );
+
+
+      console.error(
+        'WITHDRAWAL REQUEST ERROR:',
+        error
+      );
+
+
+      res.status(400).json({
+        error:
+          error.message ||
+          'Withdrawal request failed'
+      });
+
+
+    } finally {
+
+      client.release();
+
     }
-
-
-    const r = await q(
-      `INSERT INTO requests
-      (
-        user_id,
-        type,
-        amount,
-        details
-      )
-      VALUES
-      (
-        $1,
-        'WITHDRAWAL',
-        $2,
-        $3
-      )
-      RETURNING *`,
-      [
-        req.user.id,
-        amount,
-        JSON.stringify(
-          req.body.details || {}
-        )
-      ]
-    );
-
-
-    await q(
-      `INSERT INTO transactions
-      (
-        user_id,
-        type,
-        amount,
-        status,
-        meta
-      )
-      VALUES
-      (
-        $1,
-        'WITHDRAWAL',
-        $2,
-        'PENDING',
-        $3
-      )`,
-      [
-        req.user.id,
-        -amount,
-        JSON.stringify({
-          requestId:
-            r.rows[0].id
-        })
-      ]
-    );
-
-
-    res.json({
-      request: r.rows[0],
-      coins: c.rows[0].coins
-    });
 
   }
 );
@@ -893,26 +1173,48 @@ app.get(
   auth,
   async (req, res) => {
 
-    const r = await q(
-      `SELECT *
-       FROM requests
-       WHERE user_id=$1
-       ORDER BY created_at DESC
-       LIMIT 200`,
-      [req.user.id]
-    );
+    try {
+
+      const result =
+        await q(
+          `
+          SELECT *
+          FROM requests
+          WHERE user_id = $1
+          ORDER BY created_at DESC
+          LIMIT 200
+          `,
+          [req.user.id]
+        );
 
 
-    res.json({
-      requests: r.rows
-    });
+      res.json({
+        requests:
+          result.rows
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        'MY REQUESTS ERROR:',
+        error
+      );
+
+
+      res.status(500).json({
+        error:
+          'Unable to load requests'
+      });
+
+    }
 
   }
 );
 
 
 /* =========================
-   ADMIN USERS
+   ADMIN - USERS
 ========================= */
 
 app.get(
@@ -921,32 +1223,54 @@ app.get(
   admin,
   async (req, res) => {
 
-    const r = await q(
-      `SELECT
-        id,
-        name,
-        mobile,
-        email,
-        status,
-        coins,
-        referral_code,
-        created_at,
-        last_seen
-       FROM users
-       ORDER BY created_at DESC`
-    );
+    try {
+
+      const result =
+        await q(
+          `
+          SELECT
+            id,
+            name,
+            mobile,
+            email,
+            status,
+            coins,
+            referral_code,
+            created_at,
+            last_seen
+          FROM users
+          ORDER BY created_at DESC
+          `
+        );
 
 
-    res.json({
-      users: r.rows
-    });
+      res.json({
+        users:
+          result.rows
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        'ADMIN USERS ERROR:',
+        error
+      );
+
+
+      res.status(500).json({
+        error:
+          'Unable to load users'
+      });
+
+    }
 
   }
 );
 
 
 /* =========================
-   ADMIN REQUESTS
+   ADMIN - REQUESTS
 ========================= */
 
 app.get(
@@ -955,29 +1279,51 @@ app.get(
   admin,
   async (req, res) => {
 
-    const r = await q(
-      `SELECT
-        r.*,
-        u.name AS user_name,
-        u.mobile,
-        u.email
-       FROM requests r
-       JOIN users u
-       ON u.id=r.user_id
-       ORDER BY r.created_at DESC`
-    );
+    try {
+
+      const result =
+        await q(
+          `
+          SELECT
+            r.*,
+            u.name AS user_name,
+            u.mobile,
+            u.email
+          FROM requests r
+          JOIN users u
+            ON u.id = r.user_id
+          ORDER BY r.created_at DESC
+          `
+        );
 
 
-    res.json({
-      requests: r.rows
-    });
+      res.json({
+        requests:
+          result.rows
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        'ADMIN REQUESTS ERROR:',
+        error
+      );
+
+
+      res.status(500).json({
+        error:
+          'Unable to load requests'
+      });
+
+    }
 
   }
 );
 
 
 /* =========================
-   APPROVE REQUEST
+   ADMIN - APPROVE REQUEST
 ========================= */
 
 app.post(
@@ -997,25 +1343,28 @@ app.post(
       );
 
 
-      const r =
+      const result =
         await client.query(
-          `SELECT *
-           FROM requests
-           WHERE id=$1
-           FOR UPDATE`,
+          `
+          SELECT *
+          FROM requests
+          WHERE id = $1
+          FOR UPDATE
+          `,
           [req.params.id]
         );
 
 
-      const x = r.rows[0];
+      const request =
+        result.rows[0];
 
 
       if (
-        !x ||
-        x.status !== 'PENDING'
+        !request ||
+        request.status !== 'PENDING'
       ) {
 
-        throw Error(
+        throw new Error(
           'Request unavailable'
         );
 
@@ -1023,21 +1372,25 @@ app.post(
 
 
       /*
-        Only virtual/demo coins
-        are changed here.
+        Deposit approval adds
+        virtual coins.
+
+        No real-money processing.
       */
 
       if (
-        x.type === 'DEPOSIT'
+        request.type === 'DEPOSIT'
       ) {
 
         await client.query(
-          `UPDATE users
-           SET coins=coins+$1
-           WHERE id=$2`,
+          `
+          UPDATE users
+          SET coins = coins + $1
+          WHERE id = $2
+          `,
           [
-            x.amount,
-            x.user_id
+            request.amount,
+            request.user_id
           ]
         );
 
@@ -1045,29 +1398,34 @@ app.post(
 
 
       await client.query(
-        `UPDATE requests
-         SET
-           status='APPROVED',
-           reviewed_at=NOW()
-         WHERE id=$1`,
-        [x.id]
+        `
+        UPDATE requests
+        SET
+          status = 'APPROVED',
+          reviewed_at = NOW()
+        WHERE id = $1
+        `,
+        [request.id]
       );
 
 
       await client.query(
-        `UPDATE transactions
-         SET status='APPROVED'
-         WHERE user_id=$1
-         AND meta->>'requestId'=$2`,
+        `
+        UPDATE transactions
+        SET status = 'APPROVED'
+        WHERE user_id = $1
+          AND meta->>'requestId' = $2
+        `,
         [
-          x.user_id,
-          String(x.id)
+          request.user_id,
+          String(request.id)
         ]
       );
 
 
       await client.query(
-        `INSERT INTO activities
+        `
+        INSERT INTO activities
         (
           user_id,
           action,
@@ -1080,10 +1438,11 @@ app.post(
           $2,
           coins
         FROM users
-        WHERE id=$1`,
+        WHERE id = $1
+        `,
         [
-          x.user_id,
-          `${x.type} request ${x.id} approved`
+          request.user_id,
+          `${request.type} request ${request.id} approved`
         ]
       );
 
@@ -1094,19 +1453,28 @@ app.post(
 
 
       res.json({
-        ok: true
+        ok: true,
+        message:
+          'Request approved'
       });
 
 
-    } catch (e) {
+    } catch (error) {
 
       await client.query(
         'ROLLBACK'
       );
 
 
+      console.error(
+        'APPROVE REQUEST ERROR:',
+        error
+      );
+
+
       res.status(400).json({
-        error: e.message
+        error:
+          error.message
       });
 
 
@@ -1121,7 +1489,7 @@ app.post(
 
 
 /* =========================
-   REJECT REQUEST
+   ADMIN - REJECT REQUEST
 ========================= */
 
 app.post(
@@ -1141,25 +1509,28 @@ app.post(
       );
 
 
-      const r =
+      const result =
         await client.query(
-          `SELECT *
-           FROM requests
-           WHERE id=$1
-           FOR UPDATE`,
+          `
+          SELECT *
+          FROM requests
+          WHERE id = $1
+          FOR UPDATE
+          `,
           [req.params.id]
         );
 
 
-      const x = r.rows[0];
+      const request =
+        result.rows[0];
 
 
       if (
-        !x ||
-        x.status !== 'PENDING'
+        !request ||
+        request.status !== 'PENDING'
       ) {
 
-        throw Error(
+        throw new Error(
           'Request unavailable'
         );
 
@@ -1167,21 +1538,23 @@ app.post(
 
 
       /*
-        Withdrawal ke rejected hone
-        par virtual coins refund.
+        If withdrawal is rejected,
+        return virtual coins to user.
       */
 
       if (
-        x.type === 'WITHDRAWAL'
+        request.type === 'WITHDRAWAL'
       ) {
 
         await client.query(
-          `UPDATE users
-           SET coins=coins+$1
-           WHERE id=$2`,
+          `
+          UPDATE users
+          SET coins = coins + $1
+          WHERE id = $2
+          `,
           [
-            x.amount,
-            x.user_id
+            request.amount,
+            request.user_id
           ]
         );
 
@@ -1189,29 +1562,34 @@ app.post(
 
 
       await client.query(
-        `UPDATE requests
-         SET
-           status='REJECTED',
-           reviewed_at=NOW()
-         WHERE id=$1`,
-        [x.id]
+        `
+        UPDATE requests
+        SET
+          status = 'REJECTED',
+          reviewed_at = NOW()
+        WHERE id = $1
+        `,
+        [request.id]
       );
 
 
       await client.query(
-        `UPDATE transactions
-         SET status='REJECTED'
-         WHERE user_id=$1
-         AND meta->>'requestId'=$2`,
+        `
+        UPDATE transactions
+        SET status = 'REJECTED'
+        WHERE user_id = $1
+          AND meta->>'requestId' = $2
+        `,
         [
-          x.user_id,
-          String(x.id)
+          request.user_id,
+          String(request.id)
         ]
       );
 
 
       await client.query(
-        `INSERT INTO activities
+        `
+        INSERT INTO activities
         (
           user_id,
           action,
@@ -1224,10 +1602,11 @@ app.post(
           $2,
           coins
         FROM users
-        WHERE id=$1`,
+        WHERE id = $1
+        `,
         [
-          x.user_id,
-          `${x.type} request ${x.id} rejected`
+          request.user_id,
+          `${request.type} request ${request.id} rejected`
         ]
       );
 
@@ -1238,19 +1617,28 @@ app.post(
 
 
       res.json({
-        ok: true
+        ok: true,
+        message:
+          'Request rejected'
       });
 
 
-    } catch (e) {
+    } catch (error) {
 
       await client.query(
         'ROLLBACK'
       );
 
 
+      console.error(
+        'REJECT REQUEST ERROR:',
+        error
+      );
+
+
       res.status(400).json({
-        error: e.message
+        error:
+          error.message
       });
 
 
@@ -1265,7 +1653,7 @@ app.post(
 
 
 /* =========================
-   ADMIN ACTIVITIES
+   ADMIN - ACTIVITIES
 ========================= */
 
 app.get(
@@ -1274,29 +1662,51 @@ app.get(
   admin,
   async (req, res) => {
 
-    const r = await q(
-      `SELECT
-        a.*,
-        u.name AS user_name,
-        u.mobile
-       FROM activities a
-       LEFT JOIN users u
-       ON u.id=a.user_id
-       ORDER BY a.created_at DESC
-       LIMIT 200`
-    );
+    try {
+
+      const result =
+        await q(
+          `
+          SELECT
+            a.*,
+            u.name AS user_name,
+            u.mobile
+          FROM activities a
+          LEFT JOIN users u
+            ON u.id = a.user_id
+          ORDER BY a.created_at DESC
+          LIMIT 200
+          `
+        );
 
 
-    res.json({
-      activities: r.rows
-    });
+      res.json({
+        activities:
+          result.rows
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        'ADMIN ACTIVITIES ERROR:',
+        error
+      );
+
+
+      res.status(500).json({
+        error:
+          'Unable to load activities'
+      });
+
+    }
 
   }
 );
 
 
 /* =========================
-   ADMIN UPDATE USER
+   ADMIN - UPDATE USER
 ========================= */
 
 app.patch(
@@ -1305,74 +1715,124 @@ app.patch(
   admin,
   async (req, res) => {
 
-    const {
-      status,
-      coins
-    } = req.body;
+    try {
+
+      const {
+        status,
+        coins
+      } = req.body || {};
 
 
-    const fields = [];
-    const vals = [];
+      const fields = [];
+      const values = [];
 
 
-    if (status) {
+      if (status) {
 
-      fields.push(
-        `status=$${vals.length + 1}`
+        fields.push(
+          `status = $${values.length + 1}`
+        );
+
+        values.push(status);
+
+      }
+
+
+      if (
+        Number.isInteger(
+          Number(coins)
+        ) &&
+        Number(coins) >= 0
+      ) {
+
+        fields.push(
+          `coins = $${values.length + 1}`
+        );
+
+        values.push(
+          Number(coins)
+        );
+
+      }
+
+
+      if (!fields.length) {
+
+        return res.status(400).json({
+          error:
+            'Nothing to update'
+        });
+
+      }
+
+
+      values.push(
+        req.params.id
       );
 
-      vals.push(status);
 
-    }
+      const result =
+        await q(
+          `
+          UPDATE users
+          SET ${fields.join(', ')}
+          WHERE id = $${values.length}
+          RETURNING
+            id,
+            name,
+            status,
+            coins
+          `,
+          values
+        );
 
 
-    if (
-      Number.isInteger(
-        Number(coins)
-      ) &&
-      Number(coins) >= 0
-    ) {
+      if (!result.rows.length) {
 
-      fields.push(
-        `coins=$${vals.length + 1}`
+        return res.status(404).json({
+          error:
+            'User not found'
+        });
+
+      }
+
+
+      res.json({
+        user:
+          result.rows[0]
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        'ADMIN USER UPDATE ERROR:',
+        error
       );
 
-      vals.push(
-        Number(coins)
-      );
 
-    }
-
-
-    if (!fields.length) {
-
-      return res.status(400).json({
-        error: 'Nothing to update'
+      res.status(500).json({
+        error:
+          'Unable to update user'
       });
 
     }
 
-
-    vals.push(
-      req.params.id
-    );
+  }
+);
 
 
-    const r = await q(
-      `UPDATE users
-       SET ${fields.join(',')}
-       WHERE id=$${vals.length}
-       RETURNING
-         id,
-         name,
-         status,
-         coins`,
-      vals
-    );
+/* =========================
+   404 API HANDLER
+========================= */
 
+app.use(
+  '/api',
+  (req, res) => {
 
-    res.json({
-      user: r.rows[0]
+    res.status(404).json({
+      error:
+        'API endpoint not found'
     });
 
   }
@@ -1380,19 +1840,27 @@ app.patch(
 
 
 /* =========================
-   FRONTEND
+   GENERAL ERROR HANDLER
 ========================= */
 
-app.get(
-  '*',
-  (req, res) => {
+app.use(
+  (error, req, res, next) => {
 
-    res.sendFile(
-      path.join(
-        __dirname,
-        'index.html'
-      )
+    console.error(
+      'SERVER ERROR:',
+      error
     );
+
+
+    if (res.headersSent) {
+      return next(error);
+    }
+
+
+    res.status(500).json({
+      error:
+        'Internal server error'
+    });
 
   }
 );
@@ -1404,19 +1872,49 @@ app.get(
 
 async function startServer() {
 
-  await initDatabase();
+  try {
+
+    console.log(
+      'Checking database connection...'
+    );
 
 
-  app.listen(
-    process.env.PORT || 3000,
-    () => {
+    await q(
+      'SELECT 1'
+    );
 
-      console.log(
-        `FAST07 API running on http://localhost:${process.env.PORT || 3000}`
-      );
 
-    }
-  );
+    console.log(
+      'Database connection successful.'
+    );
+
+
+    app.listen(
+      PORT,
+      () => {
+
+        console.log(
+          `FAST07 API running on port ${PORT}`
+        );
+
+      }
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      'DATABASE CONNECTION FAILED:'
+    );
+
+    console.error(
+      error
+    );
+
+
+    process.exit(1);
+
+  }
 
 }
 
