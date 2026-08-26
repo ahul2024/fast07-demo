@@ -1,0 +1,29 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FERARI 007 EARNING - Admin Dashboard</title><link rel="stylesheet" href="style.css">
+<style>
+.admin-wrap{max-width:1100px;margin:auto}.admin-top{display:flex;justify-content:space-between;align-items:center;padding:18px 0}.admin-title{color:#ffd21a}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.metric{padding:20px;border:1px solid #8e670e;border-radius:16px;background:rgba(8,8,8,.9)}.metric small{color:#aaa}.metric strong{display:block;color:#ffd21a;font-size:28px;margin-top:8px}.panel{margin-top:14px;padding:18px;border:1px solid #8e670e;border-radius:16px;background:rgba(8,8,8,.9)}.table{width:100%;border-collapse:collapse}.table th,.table td{padding:10px;border-bottom:1px solid #333;text-align:left;font-size:12px}.table th{color:#ffd21a}.search{width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #765a12;background:#151515;color:#fff;margin-bottom:12px}@media(max-width:700px){.grid{grid-template-columns:1fr 1fr}.table{font-size:10px}.table th,.table td{padding:7px}}
+</style></head><body><div class="admin-wrap">
+<div class="admin-top"><div><div class="admin-title">FERARI 007 EARNING</div><small>Admin Daily Dashboard • Virtual Demo</small></div><button onclick="logout()">Logout</button></div>
+<div class="grid">
+<div class="metric"><small>NEW USERS TODAY</small><strong id="newUsers">0</strong></div>
+<div class="metric"><small>ACTIVE USERS</small><strong id="activeUsers">0</strong></div>
+<div class="metric"><small>TOTAL VIRTUAL COINS</small><strong>🪙 <span id="totalCoins">0</span></strong></div>
+<div class="metric"><small>GAME ROUNDS</small><strong id="rounds">0</strong></div>
+</div>
+<div class="panel"><h3>Registered Users</h3><input class="search" id="search" placeholder="Search by name, mobile or user ID" oninput="renderUsers()"><div style="overflow:auto"><table class="table"><thead><tr><th>User ID</th><th>Name</th><th>Mobile</th><th>Coins</th><th>Joined</th></tr></thead><tbody id="users"></tbody></table></div></div>
+<div class="panel"><h3>Game / Demo Activity</h3><div style="overflow:auto"><table class="table"><thead><tr><th>Time</th><th>Action</th><th>User</th><th>Mobile</th><th>Coins</th></tr></thead><tbody id="games"></tbody></table></div></div>
+<p style="color:#999;font-size:11px">Passwords are not displayed or stored here in plain text. This is a virtual-coin demo admin panel.</p>
+</div>
+<script>
+if(sessionStorage.getItem('adminLogged')!=='1'||!localStorage.getItem('adminToken'))location.href='admin-login.html';
+const token=()=>localStorage.getItem('adminToken');
+async function api(path,opts={}){const r=await fetch(path,{...opts,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token(),...(opts.headers||{})}});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Request failed');return d}
+let serverUsers=[];
+async function loadUsers(){try{const d=await api('/api/admin/users');serverUsers=d.users||[];render()}catch(e){document.getElementById('users').innerHTML='<tr><td colspan="5">'+esc(e.message)+'</td></tr>'}}
+function renderUsers(){const q=document.getElementById('search').value.toLowerCase();const u=serverUsers.filter(x=>JSON.stringify(x).toLowerCase().includes(q));document.getElementById('users').innerHTML=u.map(x=>'<tr><td>'+esc(x.id||'-')+'</td><td>'+esc(x.name||'-')+'</td><td>'+esc(x.mobile||'-')+'</td><td>🪙 '+esc(x.coins??0)+'</td><td>'+esc(x.created_at||'-')+'</td></tr>').join('')||'<tr><td colspan="5">No users found</td></tr>'}
+async function render(){const u=serverUsers;document.getElementById('newUsers').textContent=u.length;document.getElementById('activeUsers').textContent=u.filter(x=>x.status==='ACTIVE').length;document.getElementById('totalCoins').textContent=u.reduce((n,x)=>n+Number(x.coins||0),0);try{const d=await api('/api/admin/activities');document.getElementById('rounds').textContent=(d.activities||[]).length;document.getElementById('games').innerHTML=(d.activities||[]).slice(0,50).map(x=>'<tr><td>'+esc(x.created_at||'-')+'</td><td>'+esc(x.action||'-')+'</td><td>'+esc(x.user_name||'-')+'</td><td>'+esc(x.mobile||'-')+'</td><td>'+esc(x.coins??'-')+'</td></tr>').join('')||'<tr><td colspan="5">No activity</td></tr>'}catch(e){}renderUsers()}
+function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function logout(){localStorage.removeItem('adminToken');sessionStorage.removeItem('adminLogged');location.href='admin-login.html'}
+loadUsers();setInterval(loadUsers,5000);
+</script></body></html>
