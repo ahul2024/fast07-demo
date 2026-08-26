@@ -29,7 +29,6 @@ async function initDatabase() {
   console.error('HINT:', error.hint);
   process.exit(1);
 }
-  }
 }
 function token(u){return jwt.sign({id:u.id,role:u.role||'USER'},process.env.JWT_SECRET,{expiresIn:'7d'})}
 async function auth(req,res,next){try{const h=req.headers.authorization||'';if(!h.startsWith('Bearer '))return res.status(401).json({error:'Authentication required'});const p=jwt.verify(h.slice(7),process.env.JWT_SECRET);if(p.role==='ADMIN'){req.user={id:'ADMIN',role:'ADMIN',name:'Admin'};return next()}const r=await q('SELECT id,name,mobile,email,status,role,coins,referral_code,created_at,last_seen FROM users WHERE id=$1',[p.id]);if(!r.rows[0])return res.status(401).json({error:'User not found'});req.user=r.rows[0];next()}catch(e){res.status(401).json({error:'Invalid or expired token'})}}
