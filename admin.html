@@ -310,17 +310,16 @@ if(
 const token=()=>localStorage.getItem('adminToken');
 
 
-async function api(path,opts={}){
-
-  const r=await fetch(path,{
-    ...opts,
-
-    headers:{
-      'Content-Type':'application/json',
-      Authorization:'Bearer '+token(),
-      ...(opts.headers||{})
-    }
-  });
+async function loadRequests(){
+  try{
+    const d = await api('/api/admin/requests');
+    serverRequests = d.requests || [];
+    renderRequests();
+  }catch(e){
+    document.getElementById('requests').innerHTML =
+      '<tr><td colspan="8">'+esc(e.message)+'</td></tr>';
+  }
+}
 
   const d=await r.json().catch(()=>({}));
 
