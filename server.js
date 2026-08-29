@@ -49,6 +49,25 @@ async function initDatabase() {
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`);
 
+  await q(`CREATE TABLE IF NOT EXISTS predictions (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id),
+    period TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('colour','size','number')),
+    choice TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING','CORRECT','INCORRECT')),
+    points_awarded INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id,period,kind)
+  )`);
+
+  await q(`CREATE TABLE IF NOT EXISTS demo_wallet_requests (
+    id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id),
+    type TEXT NOT NULL CHECK(type IN ('ADD','REMOVE')), amount BIGINT NOT NULL CHECK(amount>0),
+    demo_reference TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING','APPROVED','REJECTED')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), processed_at TIMESTAMPTZ, processed_by TEXT
+  )`);
+
   await q(`CREATE TABLE IF NOT EXISTS activities (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT REFERENCES users(id),
@@ -205,6 +224,70 @@ app.get('/api/demo/history',async(req,res)=>{
     console.error(e);
     res.status(500).json({error:'Could not load demo history'});
   }
+});
+
+
+async function resolvePredictions() {
+  const nowPeriod=Number(currentPeriod());
+  const pending=await q(`SELECT id,user_id,period,kind,choice FROM predictions WHERE status='PENDING' AND period::bigint < $1`,[nowPeriod]);
+  for (const x of pending.rows) {
+    const r=resultFor(x.period);
+    const actual=x.kind==='colour'?r.colour:(x.kind==='size'?r.size:String(r.number));
+    const correct=String(x.choice)===String(actual);
+    const points=x.kind==='number'?40:10;
+    await q(`UPDATE predictions SET status=$1,points_awarded=$2 WHERE id=$3`,[correct?'CORRECT':'INCORRECT',correct?points:0,x.id]);
+    if(correct) {
+      await q(`UPDATE users SET coins=coins+$1 WHERE id=$2`,[points,x.user_id]);
+      await q(`INSERT INTO activities(user_id,action,details,coins) VALUES($1,'PREDICTION_CORRECT',$2,$3)`,[x.user_id,`Free ${x.kind} prediction correct for round ${x.period}`,points]);
+    }
+  }
+}
+
+app.post('/api/predict',auth,async(req,res)=>{
+  try {
+    await resolvePredictions();
+    const kind=String(req.body.kind||'');
+    const choice=String(req.body.choice??'');
+    if(!['colour','size','number'].includes(kind)) return res.status(400).json({error:'Invalid prediction type'});
+    const valid={colour:['Red','Green','Violet'],size:['Big','Small'],number:['0','1','2','3','4','5','6','7','8','9']};
+    if(!valid[kind].includes(choice)) return res.status(400).json({error:'Invalid prediction'});
+    const remaining=30-(Math.floor(Date.now()/1000)%30);
+    if(remaining<=2) return res.status(400).json({error:'Round is closing. Please wait for the next round.'});
+    const period=currentPeriod();
+    const row=await q(`INSERT INTO predictions(user_id,period,kind,choice) VALUES($1,$2,$3,$4) RETURNING id,period,kind,choice,status,points_awarded,created_at`,[req.user.id,period,kind,choice]);
+    await q(`INSERT INTO activities(user_id,action,details,coins) VALUES($1,'PREDICTION_SUBMITTED',$2,0)`,[req.user.id,`Free ${kind} prediction submitted for round ${period}`]);
+    res.json({ok:true,prediction:row.rows[0],message:'Prediction submitted. It will be scored when the round ends.'});
+  } catch(e) {
+    if(e.code==='23505') return res.status(409).json({error:'You already made this type of prediction for this round.'});
+    console.error('PREDICT ERROR',e); res.status(500).json({error:'Could not submit prediction'});
+  }
+});
+
+app.get('/api/predictions',auth,async(req,res)=>{
+  try { await resolvePredictions(); const r=await q(`SELECT id,period,kind,choice,status,points_awarded,created_at FROM predictions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 50`,[req.user.id]); res.json({predictions:r.rows}); }
+  catch(e){res.status(500).json({error:'Could not load predictions'});}
+});
+
+/* Demo wallet requests: virtual coins only, no money/UPI */
+app.post('/api/wallet/request',auth,async(req,res)=>{
+  try {
+    const type=String(req.body.type||''); const amount=Number(req.body.amount); const demoReference=String(req.body.demoReference||'').trim().slice(0,80);
+    if(!['ADD','REMOVE'].includes(type) || !Number.isInteger(amount) || amount<1 || amount>1000000) return res.status(400).json({error:'Invalid virtual coin request'});
+    if(!demoReference || /utr|upi|bank|payment/i.test(demoReference)) return res.status(400).json({error:'Use a fictional Demo Request ID only; no payment or UTR references.'});
+    const r=await q(`INSERT INTO demo_wallet_requests(user_id,type,amount,demo_reference) VALUES($1,$2,$3,$4) RETURNING *`,[req.user.id,type,amount,demoReference]);
+    await q(`INSERT INTO activities(user_id,action,details,coins) VALUES($1,$2,$3,$4)`,[req.user.id,type==='ADD'?'DEMO_COINS_REQUESTED':'DEMO_COINS_REMOVE_REQUESTED',`Virtual coin request pending: ${demoReference}`,amount]);
+    res.json({ok:true,request:r.rows[0],message:'Demo coin request sent to admin for review.'});
+  }catch(e){console.error(e);res.status(500).json({error:'Could not create request'});}
+});
+app.get('/api/wallet/requests',auth,async(req,res)=>{try{const r=await q(`SELECT id,type,amount,demo_reference,status,created_at,processed_at FROM demo_wallet_requests WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100`,[req.user.id]);res.json({requests:r.rows});}catch(e){res.status(500).json({error:'Could not load requests'});}});
+app.get('/api/admin/wallet/requests',adminAuth,async(_,res)=>{try{const r=await q(`SELECT w.*,u.name user_name,u.mobile,u.email FROM demo_wallet_requests w JOIN users u ON u.id=w.user_id ORDER BY w.created_at DESC LIMIT 500`);res.json({requests:r.rows});}catch(e){res.status(500).json({error:'Could not load requests'});}});
+app.post('/api/admin/wallet/requests/:id',adminAuth,async(req,res)=>{
+ const client=await pool.connect(); try{await client.query('BEGIN'); const status=String(req.body.status||''); if(!['APPROVED','REJECTED'].includes(status)) throw new Error('Invalid status');
+ const x=await client.query(`SELECT * FROM demo_wallet_requests WHERE id=$1 FOR UPDATE`,[req.params.id]); const w=x.rows[0]; if(!w) throw new Error('Request not found'); if(w.status!=='PENDING') throw new Error('Request already processed');
+ if(status==='APPROVED'){ if(w.type==='REMOVE'){const u=await client.query(`UPDATE users SET coins=coins-$1 WHERE id=$2 AND coins >= $1 RETURNING coins`,[w.amount,w.user_id]);if(!u.rows[0]) throw new Error('User does not have enough virtual coins');} else await client.query(`UPDATE users SET coins=coins+$1 WHERE id=$2`,[w.amount,w.user_id]); }
+ await client.query(`UPDATE demo_wallet_requests SET status=$1,processed_at=NOW(),processed_by='admin' WHERE id=$2`,[status,w.id]);
+ await client.query(`INSERT INTO activities(user_id,action,details,coins) VALUES($1,$2,$3,$4)`,[w.user_id,status==='APPROVED'?(w.type==='ADD'?'DEMO_COINS_ADDED':'DEMO_COINS_REMOVED'):'DEMO_REQUEST_REJECTED',`Admin ${status.toLowerCase()} virtual request ${w.demo_reference}`,w.amount]); await client.query('COMMIT');res.json({ok:true});
+ }catch(e){await client.query('ROLLBACK');res.status(400).json({error:e.message||'Could not process request'});}finally{client.release();}
 });
 
 /* Admin login */
