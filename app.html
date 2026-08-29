@@ -1,0 +1,175 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dashboard</title><link rel="stylesheet" href="style.css"><style>.brand-wrap{display:flex;align-items:center;gap:10px}.site-logo{width:70px;height:48px;object-fit:contain}.brand{font-weight:900;letter-spacing:.5px}</style></head><body><div class="app"><header><b>🎨 Colour Demo</b><button onclick="logout()">Logout</button><a href="admin-login.html" style="color:#ffd21a;text-decoration:none;margin-right:10px">Admin</a></header><div class="hero card"><div>Welcome<br><strong id="username"></strong></div><div>🪙 <strong id="coins">1000</strong></div></div><nav><button onclick="show('home')">🏠 Home</button><button onclick="show('game')">🎮 Game</button><button onclick="show('wallet')">🪙 Wallet</button><button onclick="show('ref')">🎁 Referral</button><button onclick="show('profile')">👤 Profile</button><button onclick="show('support')">🛟 Help & Support</button></nav><section id="premiumDashboard" class="premium-dashboard">
+<div class="premium-hero"><div class="hero-copy"><span class="gold-label">WELCOME BACK</span><h1>FERARI <span>007</span> EARNING</h1><p>Premium Virtual Coin Gaming Dashboard</p><div class="hero-actions"><button onclick="show('game')">🎮 PLAY NOW</button><button class="outline-gold" onclick="show('wallet')">🪙 WALLET</button></div></div><img src="ferari007_logo.png" class="dashboard-logo" alt="FERARI 007 EARNING"></div>
+<div class="stats-row"><div class="stat-card"><small>USER</small><strong id="dashUser">User</strong><span>👤 Account</span></div><div class="stat-card"><small>VIRTUAL BALANCE</small><strong>🪙 <span id="dashCoins">1000</span></strong><span>Available coins</span></div><div class="stat-card"><small>CURRENT PERIOD</small><strong id="dashPeriod">--</strong><span>30 sec demo round</span></div><div class="stat-card"><small>STATUS</small><strong class="online">● ONLINE</strong><span>Demo account</span></div></div>
+</section>
+<section id="home"><div class="grid"><button class="feature" onclick="show('game')">🎮<b>Play Game</b><small>30-second rounds</small></button><button class="feature" onclick="show('wallet')">🪙<b>Wallet</b><small>Demo deposit/withdrawal</small></button></div><div class="card"><h3>📜 Recent History</h3><div id="recent"></div></div></section><section id="game" class="hidden">
+<div class="wingo-head card">
+  <div class="how">🧾 How to Play</div>
+  <div class="game-title">Fast07 <b>30sec</b></div>
+  <div class="recent-balls"><i>7</i><i>7</i><i>2</i><i>5</i><i>8</i></div>
+  <div class="time-box"><small>Time remaining</small><strong id="timer">00:30</strong><b id="period">20260820100052000</b></div>
+</div>
+
+<div class="card game-panel">
+  <div class="colour-row">
+    <button class="colour green" onclick="pickColour('Green',this)">Green</button>
+    <button class="colour violet" onclick="pickColour('Violet',this)">Violet</button>
+    <button class="colour red" onclick="pickColour('Red',this)">Red</button>
+  </div>
+
+  <div class="number-grid">
+    <button onclick="pickNumber(0,this)">0</button><button onclick="pickNumber(1,this)">1</button>
+    <button onclick="pickNumber(2,this)">2</button><button onclick="pickNumber(3,this)">3</button>
+    <button onclick="pickNumber(4,this)">4</button><button onclick="pickNumber(5,this)">5</button>
+    <button onclick="pickNumber(6,this)">6</button><button onclick="pickNumber(7,this)">7</button>
+    <button onclick="pickNumber(8,this)">8</button><button onclick="pickNumber(9,this)">9</button>
+  </div>
+
+  <div class="mult-row">
+    <button class="random" onclick="randomPick()">Random</button>
+    <button class="active-mult" onclick="setMult(1,this)">X1</button>
+    <button onclick="setMult(5,this)">X5</button>
+    <button onclick="setMult(10,this)">X10</button>
+    <button onclick="setMult(20,this)">X20</button>
+    <button onclick="setMult(50,this)">X50</button>
+    <button onclick="setMult(100,this)">X100</button>
+  </div>
+
+  <div class="bigsmall">
+    <button onclick="pickSize('Big',this)">Big</button>
+    <button onclick="pickSize('Small',this)">Small</button>
+  </div>
+
+  <div class="bet-bar">
+    <span>Bet: <b id="bet">10</b> virtual coins</span>
+    <button onclick="setBet(10)">10</button><button onclick="setBet(50)">50</button>
+    <button onclick="setBet(100)">100</button><button onclick="setBet(500)">500</button>
+  </div>
+
+  <button class="wide place-btn" onclick="placeAdvanced()">🎯 Place Prediction</button>
+  <div id="gameMsg" class="result">Choose Green/Violet/Red, a number, or Big/Small.</div>
+</div>
+
+<div class="tabs">
+  <button class="tab-active">Game history</button><button>Chart</button><button>Follow Strategy</button>
+</div>
+
+<div class="card history-card">
+  <div class="table-head"><span>Period</span><span>Bet Number</span><span>Big/Small</span><span>Colour</span><span>Result</span><span>Bet</span><span>Status</span></div>
+  <div id="history"></div>
+</div>
+</section>
+<section id="wallet" class="wallet-premium">
+  <div class="wallet-top">
+    <div class="wallet-label">MY VIRTUAL WALLET</div>
+    <div class="wallet-balance coin-glow">🪙 <span id="walletPremiumCoins">0</span> <small>COINS</small></div>
+    <div class="wallet-sub">Your balance is for the virtual demo only.</div>
+  </div>
+  <div class="wallet-actions">
+    <button class="wallet-action" onclick="toggleWalletForm('depositForm')"><span class="wa-icon">➕🪙</span><strong>UPI DEPOSIT</strong><small>Admin approval required</small></button>
+    <button class="wallet-action" onclick="toggleWalletForm('withdrawForm')"><span class="wa-icon">↗️🪙</span><strong>WITHDRAWAL</strong><small>Admin approval required</small></button>
+  </div>
+  <div id="depositForm" class="card hidden">
+    <h3>💳 Demo UPI Deposit</h3><span class="badge">NO REAL PAYMENT</span>
+    <input id="depositUpi" placeholder="Demo UPI ID">
+    <input id="depositAmount" type="number" min="1" placeholder="Virtual coins">
+    <button class="wide" onclick="submitDepositRequest()">SEND DEPOSIT REQUEST</button>
+    <div id="depositMsg" class="result"></div>
+  </div>
+  <div id="withdrawForm" class="card hidden">
+    <h3>🏦 Demo Withdrawal</h3><input id="bankName" placeholder="Bank Name">
+    <input id="bankAccount" placeholder="Bank Account Number">
+    <input id="bankIfsc" placeholder="IFSC Code">
+    <input id="withdrawUpi" placeholder="Demo UPI ID (optional)">
+    <input id="withdrawAmount" type="number" min="1" placeholder="Virtual coins">
+    <button class="wide" onclick="submitWithdrawalRequest()">SEND WITHDRAWAL REQUEST</button>
+    <div id="withdrawMsg" class="result"></div>
+  </div>
+  <div class="wallet-history">
+    <h3>Recent Activity</h3>
+    <div class="wallet-row"><div><b>🪙 Virtual Balance</b><br><small>Current demo balance</small></div><strong id="walletActivityCoins">0</strong></div>
+    <div class="wallet-row"><div><b>🎮 Game Activity</b><br><small>Virtual prediction rounds</small></div><span>View in Game</span></div>
+  </div>
+</section><section id="ref" class="hidden"><div class="card center"><h2>🎁 Refer & Earn</h2><p>Share your referral code with a new demo user.</p><h1 id="refcode"></h1><p>New user bonus: <b>🪙 200</b> • Referrer bonus: <b>🪙 100</b></p><button onclick="copyRef()">Copy Code</button><div id="refMsg" class="result"></div></div></section><section id="profile" class="profile-premium">
+  <div class="profile-cover"></div>
+  <div class="profile-body">
+    <img src="ferari007_logo.png" class="profile-avatar" alt="Profile">
+    <div class="profile-head">
+      <div>
+        <h2 class="profile-name" id="profileName">User</h2>
+        <div class="profile-id">Member ID: <span id="profileId">U00001</span></div>
+      </div>
+      <span class="profile-badge">✓ VERIFIED DEMO ACCOUNT</span>
+    </div>
+    <div class="profile-grid">
+      <div class="profile-info"><small>Full Name</small><strong id="profileFullName">Not added</strong></div>
+      <div class="profile-info"><small>Mobile</small><strong id="profileMobile">Not added</strong></div>
+      <div class="profile-info"><small>Email</small><strong id="profileEmail">Not added</strong></div>
+      <div class="profile-info"><small>Member ID</small><strong id="profileIdCard">—</strong></div>
+      <div class="profile-info"><small>Virtual Balance</small><strong>🪙 <span id="profileCoins">0</span></strong></div>
+      <div class="profile-info"><small>Referral Code</small><strong id="profileRefer">—</strong></div>
+      <div class="profile-info"><small>Referred By</small><strong id="profileReferredBy">Direct Registration</strong></div>
+      <div class="profile-info"><small>Registered On</small><strong id="profileJoined">—</strong></div>
+      <div class="profile-info"><small>Account Status</small><strong style="color:#39d36b">● Active</strong></div>
+    </div>
+    <div class="profile-actions">
+      <button onclick="show('wallet')">🪙 VIEW WALLET</button>
+      <button class="outline-gold" onclick="show('home')">← DASHBOARD</button>
+    </div>
+  </div>
+</section><section id="support" class="hidden"><div class="card"><h2>🛟 Help & Support</h2><p>Send a demo support request to Admin.</p><input id="supportSubject" placeholder="Subject"><textarea id="supportMessage" placeholder="Describe your issue" style="width:100%;min-height:110px;padding:12px;border:1px solid #765a12;border-radius:10px"></textarea><button class="wide" onclick="sendSupportRequest()">SEND REQUEST</button><div id="supportMsg" class="result"></div></div></section><p class="demo">DEMO • NO REAL MONEY • VIRTUAL COINS ONLY</p></div><script src="app.js"></script>
+<div id="winPopup" class="win-popup-overlay" aria-hidden="true">
+  <div class="win-popup">
+    <button class="win-close" onclick="closeWinPopup()">×</button>
+    <div class="confetti">🎉 ✨ 🎊</div>
+    <div class="win-trophy">🏆</div>
+    <h2>Congratulations!</h2>
+    <p>You Won!</p>
+    <div class="win-result" id="winPopupResult">🎯 Great prediction!</div>
+    <div class="win-coins" id="winPopupCoins">🪙 +0 Virtual Coins</div>
+    <button class="win-continue" onclick="closeWinPopup()">CONTINUE</button>
+  </div>
+</div>
+
+<script>
+function walletPremiumRefresh(){
+  const c=localStorage.getItem('demoCoins')||'0';
+  ['walletPremiumCoins','walletActivityCoins'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=c});
+}
+function showDepositDemo(){alert('Demo only: virtual coins can be added for testing. No real-money deposit is processed.');walletPremiumRefresh();}
+function showWithdrawalDemo(){alert('Demo only: withdrawal requests use virtual coins and do not transfer real money. Minimum 500 virtual coins.');walletPremiumRefresh();}
+document.addEventListener('DOMContentLoaded',walletPremiumRefresh);
+</script>
+
+<div id="lossPopup" class="loss-popup-overlay" aria-hidden="true">
+  <div class="loss-popup">
+    <button class="loss-close" onclick="closeLossPopup()">×</button>
+    <div class="loss-icon">😔</div>
+    <h2>Better Luck Next Time!</h2>
+    <p>Prediction Missed</p>
+    <div class="loss-result" id="lossPopupResult">Try again in the next demo round.</div>
+    <div class="loss-coins" id="lossPopupCoins">🪙 -0 Virtual Coins</div>
+    <button class="loss-continue" onclick="closeLossPopup()">CONTINUE</button>
+  </div>
+</div>
+
+<div id="adminTestBanner" style="display:none;position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:9997;padding:8px 14px;border-radius:20px;background:#4a2d00;border:1px solid #ffd21a;color:#ffd21a;font-size:11px;font-weight:900">🧪 ADMIN TEST MODE</div>
+<script>
+(function(){
+ try{
+  const x=JSON.parse(localStorage.getItem('adminTestResult')||'null');
+  if(x && (x.number||x.colour)){
+   const b=document.getElementById('adminTestBanner'); if(b)b.style.display='block';
+  }
+ }catch(e){}
+})();
+</script>
+
+<section id="transactionHistory" class="card transaction-history">
+  <div class="section-title"><h3>📜 Transaction History</h3></div>
+  <div class="transaction-columns">
+    <div class="history-card"><h4>💳 Deposit History</h4><div id="depositHistoryList"></div></div>
+    <div class="history-card"><h4>💸 Withdrawal History</h4><div id="withdrawHistoryList"></div></div>
+  </div>
+</section>
+</body></html>
