@@ -77,7 +77,7 @@ function show(id){
   document.querySelectorAll('section').forEach(x=>x.classList.add('hidden'));
   const s=el(id); if(s) s.classList.remove('hidden');
   savePage(id);
-  if(id==='game') loadDemo();
+  if(id==='game') { loadDemo(); loadPredictions(); }
   if(id==='wallet') wallet();
   if(id==='profile') refreshProfilePremium();
   if(id==='support') renderSupport();
@@ -146,14 +146,12 @@ function renderDemoHistory(rows){
   }
 }
 
-function wallet(){ refresh(); renderTransactions(); }
-function renderTransactions(){
-  const d=el('depositHistoryList'), w=el('withdrawHistoryList'), t=el('transactions');
-  const msg='<small>Virtual demo wallet only.</small>';
-  if(d)d.innerHTML=msg;if(w)w.innerHTML=msg;if(t)t.innerHTML=msg;
-}
-function submitDeposit(){ if(el('depositMsg'))el('depositMsg').textContent='Deposits are disabled in this demo build.'; }
-function submitWithdrawal(){ if(el('withdrawMsg'))el('withdrawMsg').textContent='Withdrawals are disabled in this demo build.'; }
+async function wallet(){ await refresh(); await renderTransactions(); }
+async function renderTransactions(){try{const d=await api('/wallet/requests');const t=el('transactions');if(t)t.innerHTML=(d.requests||[]).map(x=>`<div class="prediction"><span>${esc(x.type==='ADD'?'ADD':'DEMO WITHDRAW')}</span><span>🪙 ${esc(x.amount)}</span><span>${esc(x.demo_reference)}</span><b>${esc(x.status)}</b></div>`).join('')||'<small>No demo wallet requests yet.</small>';}catch(e){}}
+async function demoWalletRequest(type,amountId,refId,msgId){try{const amount=Number(el(amountId)?.value),demoReference=el(refId)?.value||'';const d=await api('/wallet/request',{method:'POST',body:JSON.stringify({type,amount,demoReference})});el(msgId).textContent=d.message;el(amountId).value='';el(refId).value='';await renderTransactions();}catch(e){el(msgId).textContent=e.message;}}
+function submitDeposit(){return demoWalletRequest('ADD','depositAmount','depositRef','depositMsg');}
+function submitWithdrawal(){const amount=Number(el('withdrawAmount')?.value);const wallet=(el('demoWalletId')?.value||'').trim();const name=(el('demoAccountName')?.value||'').trim();const bank=(el('demoBankCode')?.value||'').trim();if(!amount||amount<1||!wallet||!name||!bank){el('withdrawMsg').textContent='Please fill all demo withdrawal fields.';return;}const ref=`Demo Wallet: ${wallet} | Demo Name: ${name} | Demo Bank: ${bank}`;return demoWalletRequestWithRef('REMOVE',amount,ref,'withdrawMsg');}
+async function demoWalletRequestWithRef(type,amount,demoReference,msgId){try{const d=await api('/wallet/request',{method:'POST',body:JSON.stringify({type,amount,demoReference})});el(msgId).textContent=d.message;el('withdrawAmount').value='';el('demoWalletId').value='';el('demoAccountName').value='';el('demoBankCode').value='';await renderTransactions();}catch(e){el(msgId).textContent=e.message;}}
 
 function renderReferral(){
   const u=currentUser||{};
@@ -170,14 +168,21 @@ function renderSupport(){
   if(el('supportList'))el('supportList').innerHTML='<small>Support tickets are not enabled in this demo build.</small>';
 }
 
-function pickColour(){ if(el('gameMsg'))el('gameMsg').textContent='This is a read-only virtual demo.'; }
-function pickNumber(){ if(el('gameMsg'))el('gameMsg').textContent='This is a read-only virtual demo.'; }
-function pickSize(){ if(el('gameMsg'))el('gameMsg').textContent='This is a read-only virtual demo.'; }
-function setBet(){ }
-function setManualBet(){ }
-function placeAdvanced(){ if(el('gameMsg'))el('gameMsg').textContent='Predictions are disabled in this demo build.'; }
-function randomPick(){ }
-function setMult(){ }
+async function submitPrediction(kind, choice){
+  if(el('gameMsg')) el('gameMsg').textContent='Submitting free prediction...';
+  try{ const d=await api('/predict',{method:'POST',body:JSON.stringify({kind,choice})}); if(el('gameMsg'))el('gameMsg').textContent=d.message; await loadPredictions(); }
+  catch(e){ if(el('gameMsg'))el('gameMsg').textContent=e.message; }
+}
+function pickColour(choice){ return submitPrediction('colour',choice); }
+function pickNumber(choice){ return submitPrediction('number',String(choice)); }
+function pickSize(choice){ return submitPrediction('size',choice); }
+function setBet(){ } function setManualBet(){ } function placeAdvanced(){ if(el('gameMsg'))el('gameMsg').textContent='Choose an option above to make a free prediction.'; } function randomPick(){ } function setMult(){ }
+async function loadPredictions(){
+  try{ const d=await api('/predictions'); const box=el('myPredictions'); if(!box)return;
+    box.innerHTML=(d.predictions||[]).map(x=>`<div class="prediction"><span>#${esc(x.period)}</span><span>${esc(x.kind)}: <b>${esc(x.choice)}</b></span><span>${esc(x.status)}</span><span>${x.points_awarded? '+'+esc(x.points_awarded)+' pts':''}</span></div>`).join('')||'<small>No predictions yet.</small>';
+    await loadMe(); await refresh();
+  }catch(e){}
+}
 
 function closeWinPopup(){el('winPopup')?.classList.remove('show')}
 function closeLossPopup(){el('lossPopup')?.classList.remove('show')}
@@ -189,6 +194,7 @@ async function initApp(){
   renderReferral();
   renderSupport();
   await loadDemo();
+  await loadPredictions();
   const page=u.last_page || 'dashboard';
   show(page==='game'||page==='wallet'||page==='ref'||page==='profile'||page==='support'||page==='home'?page:'home');
   clearInterval(pollTimer);
