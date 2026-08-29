@@ -85,5 +85,12 @@ app.post('/api/admin/requests/:id/approve',auth,admin,async(req,res)=>{const cli
 app.post('/api/admin/requests/:id/reject',auth,admin,async(req,res)=>{const client=await pool.connect();try{await client.query('BEGIN');const r=await client.query('SELECT * FROM requests WHERE id=$1 FOR UPDATE',[req.params.id]);const x=r.rows[0];if(!x||x.status!=='PENDING')throw Error('Request unavailable');if(x.type==='WITHDRAWAL')await client.query('UPDATE users SET coins=coins+$1 WHERE id=$2',[x.amount,x.user_id]);await client.query("UPDATE requests SET status='REJECTED',reviewed_at=NOW() WHERE id=$1",[x.id]);await client.query("UPDATE transactions SET status='REJECTED' WHERE user_id=$1 AND meta->>'requestId'=$2",[x.user_id,String(x.id)]);await client.query("INSERT INTO activities(user_id,action,details,coins) SELECT id,'ADMIN REQUEST REJECTED',$2,coins FROM users WHERE id=$1",[x.user_id,`${x.type} request ${x.id} rejected`]);await client.query('COMMIT');res.json({ok:true})}catch(e){await client.query('ROLLBACK');res.status(400).json({error:e.message})}finally{client.release()}});
 app.get('/api/admin/activities',auth,admin,async(req,res)=>{const r=await q("SELECT a.*,u.name user_name,u.mobile FROM activities a LEFT JOIN users u ON u.id=a.user_id ORDER BY a.created_at DESC LIMIT 200");res.json({activities:r.rows})});
 app.patch('/api/admin/users/:id',auth,admin,async(req,res)=>{const {status,coins}=req.body;const fields=[],vals=[];if(status){fields.push(`status=$${vals.length+1}`);vals.push(status)}if(Number.isInteger(Number(coins))&&Number(coins)>=0){fields.push(`coins=$${vals.length+1}`);vals.push(Number(coins))}if(!fields.length)return res.status(400).json({error:'Nothing to update'});vals.push(req.params.id);const r=await q(`UPDATE users SET ${fields.join(',')} WHERE id=$${vals.length} RETURNING id,name,status,coins`,vals);res.json({user:r.rows[0]})});
-app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
-app.listen(process.env.PORT||3000,()=>console.log(`FAST07 API running on http://localhost:${process.env.PORT||3000}`));
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'API route not found' });
+  }
+
+  res.sendFile(path.join(__dirname, 'index.html'), err => {
+    if (err) next(err);
+  });
+});app.listen(process.env.PORT||3000,()=>console.log(`FAST07 API running on http://localhost:${process.env.PORT||3000}`));
