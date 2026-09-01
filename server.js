@@ -7,7 +7,6 @@ const {Pool}=require('pg');
 const path=require('path');
 const fs=require('fs');
 const crypto=require('crypto');
-const crypto=require('crypto');
 const app=express();
 const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_SSL==='true'?{rejectUnauthorized:false}:false});
 app.use(cors({origin:process.env.CORS_ORIGIN||true}));
