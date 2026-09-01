@@ -112,7 +112,7 @@ const PORT = process.env.PORT || 3000;
 
 initDatabase()
   .then(() => {
- async function initDatabase() {
+async function initDatabase() {
   const schemaPath = path.join(__dirname, 'schema.sql');
 
   if (!fs.existsSync(schemaPath)) {
