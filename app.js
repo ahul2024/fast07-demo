@@ -113,6 +113,9 @@ async function renderAdvancedHistory(){
 
   try{
     const d=await api('/api/game/history?limit=5000');
+const rows=d.history||[];
+currentPeriod=String(d.currentPeriod||getPeriod());
+updatePeriodDisplay();
     const rows=d.history||[];
     const current=String(d.currentPeriod||'');
 
