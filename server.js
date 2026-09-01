@@ -112,28 +112,6 @@ const PORT = process.env.PORT || 3000;
 
 initDatabase()
   .then(() => {
-async function initDatabase() {
-  const schemaPath = path.join(__dirname, 'schema.sql');
-
-  if (!fs.existsSync(schemaPath)) {
-    throw new Error(`schema.sql not found at ${schemaPath}`);
-  }
-
-  const schema = fs.readFileSync(schemaPath, 'utf8');
-
-  if (!schema.trim()) {
-    throw new Error('schema.sql is empty');
-  }
-
-  await q(schema);
-
-  console.log('Database schema initialized successfully.');
-}
-
-const PORT = process.env.PORT || 3000;
-
-initDatabase()
-  .then(() => {
     app.listen(PORT, () => {
       console.log(`FAST07 API running on http://localhost:${PORT}`);
     });
