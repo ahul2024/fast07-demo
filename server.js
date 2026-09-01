@@ -94,6 +94,7 @@ app.use((req, res, next) => {
   res.sendFile(path.join(__dirname, 'index.html'), err => {
     if (err) next(err);
   });
+});
 async function initDatabase() {
   const schemaPath = path.join(__dirname, 'schema.sql');
 
