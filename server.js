@@ -16,8 +16,37 @@ const q=(text,params=[])=>pool.query(text,params);
 function token(u){return jwt.sign({id:u.id,role:u.role||'USER'},process.env.JWT_SECRET,{expiresIn:'7d'})}
 async function auth(req,res,next){try{const h=req.headers.authorization||'';if(!h.startsWith('Bearer '))return res.status(401).json({error:'Authentication required'});const p=jwt.verify(h.slice(7),process.env.JWT_SECRET);if(p.role==='ADMIN'&&p.id==='ADMIN'){req.user={id:'ADMIN',role:'ADMIN',name:'Administrator'};return next()}const r=await q('SELECT id,role,name,mobile,email,status,coins,referral_code,created_at,last_seen,last_page FROM users WHERE id=$1',[p.id]);if(!r.rows[0])return res.status(401).json({error:'User not found'});req.user=r.rows[0];next()}catch(e){res.status(401).json({error:'Invalid or expired token'})}}
 function admin(req,res,next){if(req.user?.role==='ADMIN')return next();res.status(403).json({error:'Admin only'})}
-app.post('/api/admin/login',async(req,res)=>{try{const {identifier,password}=req.body;const adminId=process.env.ADMIN_ID||'admin';const adminPassword=process.env.ADMIN_PASSWORD||'Admin@12345';if(identifier!==adminId||password!==adminPassword)return res.status(401).json({error:'Invalid admin credentials'});const u={id:'ADMIN',role:'ADMIN',name:'Administrator'};res.json({token:token(u),user:u})catch(e){res.status(500).json({error:'Admin login failed'})}})
-app.get('/api/health',async(_,res)=>{try{await q('SELECT 1');res.json({ok:true,service:'FAST07 demo API'})}catch(e){res.status(503).json({ok:false,error:'Database unavailable'})}});
+app.post('/api/admin/login', async (req, res) => {
+  try {
+    const { identifier, password } = req.body;
+
+    const adminId = process.env.ADMIN_ID || 'admin';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@12345';
+
+    if (identifier !== adminId || password !== adminPassword) {
+      return res.status(401).json({
+        error: 'Invalid admin credentials'
+      });
+    }
+
+    const u = {
+      id: 'ADMIN',
+      role: 'ADMIN',
+      name: 'Administrator'
+    };
+
+    res.json({
+      token: token(u),
+      user: u
+    });
+
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({
+      error: 'Admin login failed'
+    });
+  }
+});app.get('/api/health',async(_,res)=>{try{await q('SELECT 1');res.json({ok:true,service:'FAST07 demo API'})}catch(e){res.status(503).json({ok:false,error:'Database unavailable'})}});
 app.post('/api/auth/signup',async(req,res)=>{try{const {name,mobile,email,password,referralCode=''}=req.body;if(!name||!mobile||!email||!password)return res.status(400).json({error:'Missing required fields'});const ex=await q('SELECT id FROM users WHERE email=$1 OR mobile=$2',[email.toLowerCase(),mobile]);if(ex.rows[0])return res.status(409).json({error:'Email or mobile already registered'});let ref=null;if(referralCode)ref=(await q('SELECT id FROM users WHERE referral_code=$1',[referralCode.toUpperCase()])).rows[0];const hash=await bcrypt.hash(password,12);const code='REF-'+crypto.randomBytes(4).toString('hex').toUpperCase();const r=await q('INSERT INTO users(name,mobile,email,password_hash,referral_code,referred_by,coins) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,name,mobile,email,status,coins,referral_code,created_at,last_seen,last_page',[name,mobile,email.toLowerCase(),hash,code,ref?.id||null,ref?1200:1000]);const u=r.rows[0];if(ref){await q('UPDATE users SET coins=coins+100 WHERE id=$1',[ref.id]);await q("INSERT INTO transactions(user_id,type,amount,status,meta) VALUES($1,'REFERRAL',100,'APPROVED',$2)",[ref.id,JSON.stringify({newUserId:u.id})])}await q("INSERT INTO activities(user_id,action,details,coins) VALUES($1,'REGISTER','New demo account created',$2)",[u.id,u.coins]);res.json({token:token(u),user:u})}catch(e){console.error(e);res.status(500).json({error:'Signup failed'})}});
 app.post('/api/auth/login',async(req,res)=>{try{const {identifier,password}=req.body;const r=await q('SELECT * FROM users WHERE email=$1 OR mobile=$1',[String(identifier||'').toLowerCase()]);const u=r.rows[0];if(!u||!(await bcrypt.compare(password||'',u.password_hash)))return res.status(401).json({error:'Invalid login details'});if(u.status==='BLOCKED')return res.status(403).json({error:'Account blocked'});await q('UPDATE users SET last_seen=NOW() WHERE id=$1',[u.id]);await q("INSERT INTO activities(user_id,action,details,coins) VALUES($1,'LOGIN','User logged in',$2)",[u.id,u.coins]);res.json({token:token(u),user:{id:u.id,name:u.name,mobile:u.mobile,email:u.email,status:u.status,coins:u.coins,referralCode:u.referral_code,lastPage:u.last_page||'dashboard'}})}catch(e){res.status(500).json({error:'Login failed'})}});
 app.get('/api/me',auth,async(req,res)=>{res.json({user:req.user})});
