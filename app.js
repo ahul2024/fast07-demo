@@ -124,7 +124,7 @@ updatePeriodDisplay();
 
     e.innerHTML=rows.map(x=>{
       const period=String(x.period||'');
-      const isCurrent=period===current;
+      const isCurrent=period===currentPeriod;
 
       const result=x.number==null ? '--' : x.number;
       const size=x.size||'--';
