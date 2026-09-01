@@ -5,6 +5,7 @@ const bcrypt=require('bcryptjs');
 const jwt=require('jsonwebtoken');
 const {Pool}=require('pg');
 const path=require('path');
+const fs=require('fs');
 const crypto=require('crypto');
 const app=express();
 const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_SSL==='true'?{rejectUnauthorized:false}:false});
@@ -93,4 +94,29 @@ app.use((req, res, next) => {
   res.sendFile(path.join(__dirname, 'index.html'), err => {
     if (err) next(err);
   });
-});app.listen(process.env.PORT||3000,()=>console.log(`FAST07 API running on http://localhost:${process.env.PORT||3000}`));
+async function initDatabase() {
+  const schemaPath = path.join(__dirname, 'schema.sql');
+
+  if (!fs.existsSync(schemaPath)) {
+    throw new Error(`schema.sql not found at ${schemaPath}`);
+  }
+
+  const schema = fs.readFileSync(schemaPath, 'utf8');
+
+  await q(schema);
+
+  console.log('Database schema initialized successfully.');
+}
+
+const PORT = process.env.PORT || 3000;
+
+initDatabase()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`FAST07 API running on http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('Database initialization failed:', err);
+    process.exit(1);
+  });
