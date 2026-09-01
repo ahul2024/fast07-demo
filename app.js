@@ -116,9 +116,6 @@ async function renderAdvancedHistory(){
 const rows=d.history||[];
 currentPeriod=String(d.currentPeriod||getPeriod());
 updatePeriodDisplay();
-    const rows=d.history||[];
-    const current=String(d.currentPeriod||'');
-
     if(!rows.length){
       e.innerHTML='<small>No rounds yet.</small>';
       if(el('recent'))el('recent').innerHTML='<small>No rounds yet.</small>';
