@@ -103,20 +103,78 @@ function getRoundResult(period){let all=getRoundResults();if(all[period])return 
 let serverRoundCache={};
 async function loadServerRound(period){try{const d=await api('/api/game/round/'+encodeURIComponent(period));if(d.round){serverRoundCache[period]=d.round;return d.round}}catch(e){}return null}
 async function renderAdvancedHistory(){
-  const e=el('history'); if(!e)return;
+  const e=el('history');
+  if(!e)return;
+
   try{
-    const d=await api('/api/game/history?limit=5000'), rows=d.history||[];
-    e.innerHTML=rows.length?rows.map(x=>{
-      const isCurrent=String(x.period)===String(d.currentPeriod);
-      const status=x.bet_outcome||(isCurrent?'LIVE':'NO BET');
+    const d=await api('/api/game/history?limit=5000');
+    const rows=d.history||[];
+    const current=String(d.currentPeriod||'');
+
+    if(!rows.length){
+      e.innerHTML='<small>No rounds yet.</small>';
+      if(el('recent'))el('recent').innerHTML='<small>No rounds yet.</small>';
+      return;
+    }
+
+    e.innerHTML=rows.map(x=>{
+      const period=String(x.period||'');
+      const isCurrent=period===current;
+
+      const result=x.number==null ? '--' : x.number;
+      const size=x.size||'--';
+      const colour=x.colour||'--';
+
       const betChoice=x.bet_choice||'No Bet';
-      const amount=x.bet_amount||0;
-      return `<div class="history-item"><span>#${esc(x.period)}</span><span>${esc(betChoice)}</span><span>${esc(x.size??'--')}</span><span>${esc(x.colour??'--')}</span><span>${esc(x.number??'--')}</span><span>🪙 ${esc(amount)}</span><b class="status-${String(status).toLowerCase().replace(/\s/g,'-')}" >${esc(status)}</b></div>`;
-    }).join(''):'<small>No rounds yet.</small>';
-    if(el('recent'))el('recent').innerHTML=rows.slice(0,8).map(x=>`<div class="history-item"><span>#${esc(x.period)}</span><span>${esc(x.number??'--')}</span><span>${esc(x.colour??'--')}</span><b>${esc(x.bet_outcome|| (String(x.period)===String(d.currentPeriod)?'LIVE':'NO BET'))}</b></div>`).join('')||'<small>No rounds yet.</small>';
-  }catch(e){
-    const h=safeJSON(key(H),[]),e2=el('history');
-    if(e2)e2.innerHTML=h.length?h.map(x=>`<div class="history-item"><span>#${esc(x.period||x.r)}</span><span>${esc(x.betChoice||'No Bet')}</span><span>${esc(x.size||'--')}</span><span>${esc(x.colour||'--')}</span><span>${esc(x.number??'--')}</span><span>🪙 ${esc(x.bet||0)}</span><b>${esc(x.status||'--')}</b></div>`).join(''):'<small>No rounds yet.</small>';
+      const amount=Number(x.bet_amount||0);
+
+      let status;
+      if(isCurrent){
+        status='LIVE';
+      }else if(x.bet_outcome){
+        status=String(x.bet_outcome);
+      }else{
+        status='NO BET';
+      }
+
+      return `
+        <div class="history-item">
+          <span>#${esc(period)}</span>
+          <span>${esc(betChoice)}</span>
+          <span>${esc(size)}</span>
+          <span>${esc(colour)}</span>
+          <span>${esc(result)}</span>
+          <span>🪙 ${esc(amount)}</span>
+          <b class="status-${status.toLowerCase().replace(/\s+/g,'-')}">
+            ${esc(status)}
+          </b>
+        </div>
+      `;
+    }).join('');
+
+    if(el('recent')){
+      el('recent').innerHTML=rows.slice(0,8).map(x=>{
+        const period=String(x.period||'');
+        const isCurrent=period===current;
+
+        return `
+          <div class="history-item">
+            <span>#${esc(period)}</span>
+            <span>${esc(x.number==null?'--':x.number)}</span>
+            <span>${esc(x.colour||'--')}</span>
+            <b>${esc(
+              isCurrent ? 'LIVE' :
+              (x.bet_outcome||'NO BET')
+            )}</b>
+          </div>
+        `;
+      }).join('');
+    }
+
+  }catch(err){
+    console.error('History load failed:',err);
+    e.innerHTML='<small>Unable to load history.</small>';
+    if(el('recent'))el('recent').innerHTML='<small>Unable to load history.</small>';
   }
 }
 function startAdvanced(){clearInterval(iv);currentPeriod=getPeriod();t=30;locked=false;selectedNumber=null;selectedColour='';selectedSize='';if(el('timer'))el('timer').textContent='00:30';if(el('period'))el('period').textContent=currentPeriod;document.querySelectorAll('.selected').forEach(x=>x.classList.remove('selected'));renderAdvancedHistory();loadServerRound(currentPeriod);iv=setInterval(()=>{t--;if(el('timer'))el('timer').textContent='00:'+(t<10?'0':'')+t;if(t<=8&&t>0)countdownBeep(t);if(t<=0){clearInterval(iv);finishRound(currentPeriod)}},1000)}
