@@ -97,7 +97,12 @@ function setBet(x){bet=Math.max(1,Number(x)||1);if(el('bet'))el('bet').textConte
 function setManualBet(){const x=Number(el('manualBet')?.value||0);if(x<1)return el('betMsg').textContent='Enter at least 1 virtual coin.';if(x>coins())return el('betMsg').textContent='Amount exceeds your available virtual coins.';setBet(x);el('betMsg').textContent='✓ Bet amount set to 🪙 '+x}
 
 function getPeriod(){return String(1000000000+Math.floor(Date.now()/30000))}
-function updatePeriodDisplay(){const p=getPeriod();['period','gamePeriod','dashPeriod'].forEach(id=>{if(el(id))el(id).textContent=p})}
+function updatePeriodDisplay(){
+  const p=String(currentPeriod||getPeriod());
+  ['period','gamePeriod','dashPeriod'].forEach(id=>{
+    if(el(id)) el(id).textContent=p;
+  });
+}
 function getRoundResults(){return safeJSON(ROUNDS,{})}
 function getRoundResult(period){let all=getRoundResults();if(all[period])return all[period];let test=safeJSON(TEST,null);let useTest=test&&test.period===period;let n=useTest&&test.number!==''?Number(test.number):Math.floor(Math.random()*10);let colour=useTest&&test.colour?test.colour:(n===5?'Violet':(n%2===0?'Red':'Green'));let size=n>=5?'Big':'Small';let out={period,number:n,colour,size,adminTest:!!useTest,time:now()};all[period]=out;localStorage.setItem(ROUNDS,JSON.stringify(all));return out}
 let serverRoundCache={};
