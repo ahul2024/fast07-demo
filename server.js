@@ -7,6 +7,7 @@ const {Pool}=require('pg');
 const path=require('path');
 const fs=require('fs');
 const crypto=require('crypto');
+const crypto=require('crypto');
 const app=express();
 const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_SSL==='true'?{rejectUnauthorized:false}:false});
 app.use(cors({origin:process.env.CORS_ORIGIN||true}));
@@ -102,6 +103,28 @@ async function initDatabase() {
   }
 
   const schema = fs.readFileSync(schemaPath, 'utf8');
+
+  await q(schema);
+
+  console.log('Database schema initialized successfully.');
+}
+
+const PORT = process.env.PORT || 3000;
+
+initDatabase()
+  .then(() => {
+ async function initDatabase() {
+  const schemaPath = path.join(__dirname, 'schema.sql');
+
+  if (!fs.existsSync(schemaPath)) {
+    throw new Error(`schema.sql not found at ${schemaPath}`);
+  }
+
+  const schema = fs.readFileSync(schemaPath, 'utf8');
+
+  if (!schema.trim()) {
+    throw new Error('schema.sql is empty');
+  }
 
   await q(schema);
 
