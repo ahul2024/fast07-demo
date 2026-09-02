@@ -20,11 +20,9 @@ async function syncServerUser(){
       coins:Number(u.coins||0),refCode:u.referral_code||u.referralCode||'',lastPage:u.last_page||u.lastPage||'dashboard',
       joined:u.created_at||'',lastSeen:u.last_seen||Date.now()
     }));
-    localStorage.setItem(C+':'+u.id,String(u.coins||0));
-}
-    return u;
-  }catch(e){ localStorage.removeItem('fast07_token'); localStorage.removeItem(U); return null; }
-}
+   localStorage.setItem(C+':'+u.id,String(u.coins||0));
+return u;
+}catch(e){ localStorage.removeItem('fast07_token'); localStorage.removeItem(U); return null; }
 
 const U='demoUser', USERS='demoUsers', C='demoCoins', H='demoHistory', T='demoTx', REQ='demoRequests', ACT='demoLiveActivity', SUP='demoSupport', REF='demoReferrals', ROUNDS='demoRounds', TEST='adminTestResult';
 const el=id=>document.getElementById(id);
