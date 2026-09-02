@@ -114,8 +114,6 @@ function ensureCurrentUser(){
 
   return u;
 }
-}catch(e){ localStorage.removeItem('fast07_token'); localStorage.removeItem(U); return null; }
-
 const U='demoUser', USERS='demoUsers', C='demoCoins', H='demoHistory', T='demoTx', REQ='demoRequests', ACT='demoLiveActivity', SUP='demoSupport', REF='demoReferrals', ROUNDS='demoRounds', TEST='adminTestResult';
 const el=id=>document.getElementById(id);
 const safeJSON=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key)||JSON.stringify(fallback))}catch(e){return fallback}};
