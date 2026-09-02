@@ -11,15 +11,37 @@ async function api(path, options={}){
   return d;
 }
 async function syncServerUser(){
-  const t=getToken(); if(!t) return null;
+  const t=getToken();
+  if(!t)return null;
+
   try{
     const d=await api('/api/me');
     const u=d.user;
+
     localStorage.setItem(U,JSON.stringify({
-      id:String(u.id),name:u.name,mobile:u.mobile,email:u.email,status:u.status,
-      coins:Number(u.coins||0),refCode:u.referral_code||u.referralCode||'',lastPage:u.last_page||u.lastPage||'dashboard',
-      joined:u.created_at||'',lastSeen:u.last_seen||Date.now()
+      id:String(u.id),
+      name:u.name,
+      mobile:u.mobile,
+      email:u.email,
+      status:u.status,
+      coins:Number(u.coins||0),
+      refCode:u.referral_code||u.referralCode||'',
+      lastPage:u.last_page||u.lastPage||'dashboard',
+      joined:u.created_at||'',
+      lastSeen:u.last_seen||Date.now()
     }));
+
+    localStorage.setItem(C+':'+u.id,String(u.coins||0));
+
+    return u;
+
+  }catch(e){
+    console.error('syncServerUser error:',e);
+    localStorage.removeItem('fast07_token');
+    localStorage.removeItem(U);
+    return null;
+  }
+}
    localStorage.setItem(C+':'+u.id,String(u.coins||0));
 return u;
 }catch(e){ localStorage.removeItem('fast07_token'); localStorage.removeItem(U); return null; }
