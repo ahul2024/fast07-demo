@@ -21,6 +21,12 @@ async function syncServerUser(){
       joined:u.created_at||'',lastSeen:u.last_seen||Date.now()
     }));
     localStorage.setItem(C+':'+u.id,String(u.coins||0));
+    let users=allUsers();
+const i=users.findIndex(x=>String(x.id)===String(u.id));
+if(i>=0){
+  users[i]={...users[i],coins:Number(u.coins||0)};
+  saveUsers(users);
+}
     return u;
   }catch(e){ localStorage.removeItem('fast07_token'); localStorage.removeItem(U); return null; }
 }
@@ -42,7 +48,14 @@ function ensureCurrentUser(){
   a[i].lastSeen=Date.now();saveUsers(a);u=a[i];localStorage.setItem(U,JSON.stringify(u));if(!localStorage.getItem(C+':'+u.id))localStorage.setItem(C+':'+u.id,String(u.coins||1000));return u;
 }
 
-const coins=()=>Number(localStorage.getItem(key(C))||0);
+const coins=()=>{
+  const u=safeJSON(U,null);
+  if(!u)return 0;
+
+  const saved=localStorage.getItem(C+':'+u.id);
+
+  return Number(saved ?? u.coins ?? 0);
+};
 const now=()=>new Date().toLocaleString();
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
