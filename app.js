@@ -34,16 +34,86 @@ async function syncServerUser(){
     localStorage.setItem(C+':'+u.id,String(u.coins||0));
 
     return u;
-
   }catch(e){
-    console.error('syncServerUser error:',e);
     localStorage.removeItem('fast07_token');
     localStorage.removeItem(U);
     return null;
   }
 }
-   localStorage.setItem(C+':'+u.id,String(u.coins||0));
-return u;
+
+const U='demoUser',
+  USERS='demoUsers',
+  C='demoCoins',
+  H='demoHistory',
+  T='demoTx',
+  REQ='demoRequests',
+  ACT='demoLiveActivity',
+  SUP='demoSupport',
+  REF='demoReferrals',
+  ROUNDS='demoRounds',
+  TEST='adminTestResult';
+
+const el=id=>document.getElementById(id);
+
+const safeJSON=(key,fallback)=>{
+  try{
+    return JSON.parse(localStorage.getItem(key)||JSON.stringify(fallback));
+  }catch(e){
+    return fallback;
+  }
+};
+
+const user=()=>safeJSON(U,null);
+
+const uid=()=>{
+  const u=ensureCurrentUser()||user();
+  return u&&u.id||'';
+};
+
+const key=(base)=>uid()?base+':'+uid():base;
+
+function ensureCurrentUser(){
+  let u=safeJSON(U,null);
+  if(!u)return null;
+
+  let a=allUsers();
+  let i=a.findIndex(x=>x.id===u.id||x.email===u.email||x.mobile===u.mobile);
+
+  if(i<0){
+    u={
+      ...u,
+      id:u.id||('U'+Date.now().toString().slice(-8)),
+      status:u.status||'ACTIVE',
+      joined:u.joined||now(),
+      coins:Number(u.coins||0),
+      refCode:u.refCode||u.ref||('REF-'+String(u.mobile||'').replace(/\D/g,'').slice(-6)),
+      referralEarned:Number(u.referralEarned||0),
+      lastSeen:Date.now()
+    };
+
+    a.push(u);
+    saveUsers(a);
+    localStorage.setItem(U,JSON.stringify(u));
+    localStorage.setItem(C+':'+u.id,String(u.coins));
+    return u;
+  }
+
+  if(!a[i].id)a[i].id='U'+Date.now().toString().slice(-8);
+  if(!a[i].status)a[i].status='ACTIVE';
+  if(!a[i].coins)a[i].coins=Number(localStorage.getItem(C+':'+u.id)||u.coins||0);
+  if(!a[i].refCode)a[i].refCode='REF-'+String(a[i].mobile||'').replace(/\D/g,'').slice(-6);
+
+  a[i].lastSeen=Date.now();
+  saveUsers(a);
+  u=a[i];
+
+  localStorage.setItem(U,JSON.stringify(u));
+  if(!localStorage.getItem(C+':'+u.id)){
+    localStorage.setItem(C+':'+u.id,String(u.coins||0));
+  }
+
+  return u;
+}
 }catch(e){ localStorage.removeItem('fast07_token'); localStorage.removeItem(U); return null; }
 
 const U='demoUser', USERS='demoUsers', C='demoCoins', H='demoHistory', T='demoTx', REQ='demoRequests', ACT='demoLiveActivity', SUP='demoSupport', REF='demoReferrals', ROUNDS='demoRounds', TEST='adminTestResult';
