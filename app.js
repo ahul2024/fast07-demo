@@ -38,7 +38,7 @@ function ensureCurrentUser(){
   if(i<0){u={...u,id:u.id||('U'+Date.now().toString().slice(-8)),status:u.status||'ACTIVE',joined:u.joined||now(),coins:Number(localStorage.getItem(C)||u.coins||1000),refCode:u.refCode||u.ref||('REF-'+String(u.mobile||'').replace(/\D/g,'').slice(-6)),referralEarned:Number(u.referralEarned||0),lastSeen:Date.now()};a.push(u);saveUsers(a);localStorage.setItem(U,JSON.stringify(u));localStorage.setItem(C+':'+u.id,String(u.coins));return u}
   if(!a[i].id){a[i].id='U'+Date.now().toString().slice(-8)}
   if(!a[i].status)a[i].status='ACTIVE';
-  if(!a[i].coins)a[i].coins=Number(localStorage.getItem(C)||1000);
+  if(a[i].coins==null)a[i].coins=Number(u.coins??localStorage.getItem(C)??0);
   if(!a[i].refCode)a[i].refCode='REF-'+String(a[i].mobile||'').replace(/\D/g,'').slice(-6);
   a[i].lastSeen=Date.now();saveUsers(a);u=a[i];localStorage.setItem(U,JSON.stringify(u));if(!localStorage.getItem(C+':'+u.id))localStorage.setItem(C+':'+u.id,String(u.coins||1000));return u;
 }
