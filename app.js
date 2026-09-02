@@ -48,14 +48,7 @@ function ensureCurrentUser(){
   a[i].lastSeen=Date.now();saveUsers(a);u=a[i];localStorage.setItem(U,JSON.stringify(u));if(!localStorage.getItem(C+':'+u.id))localStorage.setItem(C+':'+u.id,String(u.coins||1000));return u;
 }
 
-const coins=()=>{
-  const u=safeJSON(U,null);
-  if(!u)return 0;
-
-  const saved=localStorage.getItem(C+':'+u.id);
-
-  return Number(saved ?? u.coins ?? 0);
-};
+const coins=()=>Number(localStorage.getItem(key(C))||0);
 const now=()=>new Date().toLocaleString();
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
