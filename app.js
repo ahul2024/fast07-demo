@@ -21,11 +21,6 @@ async function syncServerUser(){
       joined:u.created_at||'',lastSeen:u.last_seen||Date.now()
     }));
     localStorage.setItem(C+':'+u.id,String(u.coins||0));
-    let users=allUsers();
-const i=users.findIndex(x=>String(x.id)===String(u.id));
-if(i>=0){
-  users[i]={...users[i],coins:Number(u.coins||0)};
-  saveUsers(users);
 }
     return u;
   }catch(e){ localStorage.removeItem('fast07_token'); localStorage.removeItem(U); return null; }
